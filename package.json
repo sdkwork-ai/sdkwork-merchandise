@@ -47,7 +47,12 @@
     "_sdkwork:verify": "pnpm check && pnpm format:check && cargo clippy --workspace --tests -- -D warnings && cargo test --workspace && pnpm run check:app-composition",
     "_sdkwork:clean": "node -e \"console.log('Remove target/, node_modules/, dist/ manually')\"",
     "dev:standalone": "pnpm exec sdkwork-app dev --deployment-profile standalone",
-    "dev:cloud": "pnpm exec sdkwork-app dev --deployment-profile cloud"
+    "dev:cloud": "pnpm exec sdkwork-app dev --deployment-profile cloud",
+    "build:pc:dev": "node ../sdkwork-specs/tools/build-browser-client.mjs --root . --architecture pc --environment dev",
+    "build:pc:test": "node ../sdkwork-specs/tools/build-browser-client.mjs --root . --architecture pc --environment test",
+    "build:pc:staging": "node ../sdkwork-specs/tools/build-browser-client.mjs --root . --architecture pc --environment staging",
+    "build:pc:prod": "node ../sdkwork-specs/tools/build-browser-client.mjs --root . --architecture pc --environment prod",
+    "check:browser-build-scripts": "node ../sdkwork-specs/tools/check-browser-build-scripts.mjs --root ."
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",

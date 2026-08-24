@@ -40,6 +40,38 @@ profiles:
         tls: dtupay.cn
         mode: web+api
         web: adaptive
+      - domain: merchandise-dev.skubc.com
+        tls: skubc.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.skubc.cn
+        tls: skubc.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.zowalk.com
+        tls: zowalk.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.zowalk.cn
+        tls: zowalk.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.offer86.com
+        tls: offer86.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.offer86.cn
+        tls: offer86.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.86offer.com
+        tls: 86offer.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.86offer.cn
+        tls: 86offer.cn
+        mode: web+api
+        web: adaptive
     packages: []
     overrides:
       topology:
@@ -83,6 +115,38 @@ profiles:
         web: adaptive
       - domain: merchandise.dtupay.cn
         tls: dtupay.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.skubc.com
+        tls: skubc.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.skubc.cn
+        tls: skubc.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.zowalk.com
+        tls: zowalk.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.zowalk.cn
+        tls: zowalk.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.offer86.com
+        tls: offer86.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.offer86.cn
+        tls: offer86.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.86offer.com
+        tls: 86offer.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.86offer.cn
+        tls: 86offer.cn
         mode: web+api
         web: adaptive
     packages: []
@@ -130,6 +194,38 @@ profiles:
         tls: dtupay.cn
         mode: web+api
         web: adaptive
+      - domain: merchandise-dev.skubc.com
+        tls: skubc.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.skubc.cn
+        tls: skubc.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.zowalk.com
+        tls: zowalk.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.zowalk.cn
+        tls: zowalk.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.offer86.com
+        tls: offer86.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.offer86.cn
+        tls: offer86.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.86offer.com
+        tls: 86offer.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise-dev.86offer.cn
+        tls: 86offer.cn
+        mode: web+api
+        web: adaptive
     packages: []
     overrides:
       topology:
@@ -173,6 +269,38 @@ profiles:
         web: adaptive
       - domain: merchandise.dtupay.cn
         tls: dtupay.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.skubc.com
+        tls: skubc.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.skubc.cn
+        tls: skubc.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.zowalk.com
+        tls: zowalk.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.zowalk.cn
+        tls: zowalk.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.offer86.com
+        tls: offer86.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.offer86.cn
+        tls: offer86.cn
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.86offer.com
+        tls: 86offer.com
+        mode: web+api
+        web: adaptive
+      - domain: merchandise.86offer.cn
+        tls: 86offer.cn
         mode: web+api
         web: adaptive
     packages: []
