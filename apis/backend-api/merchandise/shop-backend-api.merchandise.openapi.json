@@ -120,7 +120,7 @@
           "catalog"
         ],
         "summary": "Catalog categories management list.",
-        "operationId": "catalog.categories.management.list",
+        "operationId": "categories.management.list",
         "parameters": [
           {
             "name": "parent_id",
@@ -255,7 +255,7 @@
           "catalog"
         ],
         "summary": "Catalog categories create.",
-        "operationId": "catalog.categories.create",
+        "operationId": "categories.create",
         "parameters": [],
         "responses": {
           "201": {
@@ -364,7 +364,7 @@
           "catalog"
         ],
         "summary": "Catalog categories update.",
-        "operationId": "catalog.categories.update",
+        "operationId": "categories.update",
         "parameters": [
           {
             "name": "categoryId",
@@ -480,7 +480,7 @@
           "catalog"
         ],
         "summary": "Catalog categories delete.",
-        "operationId": "catalog.categories.delete",
+        "operationId": "categories.delete",
         "parameters": [
           {
             "name": "categoryId",
@@ -521,7 +521,7 @@
           "catalog"
         ],
         "summary": "Catalog products management list.",
-        "operationId": "catalog.products.management.list",
+        "operationId": "products.management.list",
         "parameters": [
           {
             "name": "q",
@@ -680,7 +680,7 @@
           "catalog"
         ],
         "summary": "Catalog products create.",
-        "operationId": "catalog.products.create",
+        "operationId": "products.create",
         "parameters": [],
         "responses": {
           "201": {
@@ -789,7 +789,7 @@
           "catalog"
         ],
         "summary": "Catalog products management retrieve.",
-        "operationId": "catalog.products.management.retrieve",
+        "operationId": "products.management.retrieve",
         "parameters": [
           {
             "name": "productId",
@@ -895,7 +895,7 @@
           "catalog"
         ],
         "summary": "Catalog products update.",
-        "operationId": "catalog.products.update",
+        "operationId": "products.update",
         "parameters": [
           {
             "name": "productId",
@@ -1011,7 +1011,7 @@
           "catalog"
         ],
         "summary": "Catalog products delete.",
-        "operationId": "catalog.products.delete",
+        "operationId": "products.delete",
         "parameters": [
           {
             "name": "productId",
@@ -1052,7 +1052,7 @@
           "catalog"
         ],
         "summary": "Catalog spus management list.",
-        "operationId": "catalog.spus.management.list",
+        "operationId": "spus.management.list",
         "parameters": [
           {
             "name": "q",
@@ -1195,7 +1195,7 @@
           "catalog"
         ],
         "summary": "Catalog spus create.",
-        "operationId": "catalog.spus.create",
+        "operationId": "spus.create",
         "parameters": [],
         "responses": {
           "201": {
@@ -1304,7 +1304,7 @@
           "catalog"
         ],
         "summary": "Catalog spus update.",
-        "operationId": "catalog.spus.update",
+        "operationId": "spus.update",
         "parameters": [
           {
             "name": "spuId",
@@ -1422,7 +1422,7 @@
           "catalog"
         ],
         "summary": "Catalog spus publish.",
-        "operationId": "catalog.spus.publish",
+        "operationId": "spus.publish",
         "parameters": [
           {
             "name": "spuId",
@@ -1540,7 +1540,7 @@
           "catalog"
         ],
         "summary": "Catalog spus archive.",
-        "operationId": "catalog.spus.archive",
+        "operationId": "spus.archive",
         "parameters": [
           {
             "name": "spuId",
@@ -1658,7 +1658,7 @@
           "catalog"
         ],
         "summary": "Catalog skus list.",
-        "operationId": "catalog.skus.list",
+        "operationId": "skus.list",
         "parameters": [
           {
             "name": "product_id",
@@ -1793,7 +1793,7 @@
           "catalog"
         ],
         "summary": "Catalog skus create.",
-        "operationId": "catalog.skus.create",
+        "operationId": "skus.create",
         "parameters": [],
         "responses": {
           "201": {
@@ -1902,7 +1902,7 @@
           "catalog"
         ],
         "summary": "Catalog skus update.",
-        "operationId": "catalog.skus.update",
+        "operationId": "skus.update",
         "parameters": [
           {
             "name": "skuId",
@@ -2018,7 +2018,7 @@
           "catalog"
         ],
         "summary": "Catalog skus delete.",
-        "operationId": "catalog.skus.delete",
+        "operationId": "skus.delete",
         "parameters": [
           {
             "name": "skuId",
@@ -2059,7 +2059,7 @@
           "catalog"
         ],
         "summary": "Catalog attributes management list.",
-        "operationId": "catalog.attributes.management.list",
+        "operationId": "attributes.management.list",
         "parameters": [
           {
             "name": "scope",
@@ -2194,7 +2194,7 @@
           "catalog"
         ],
         "summary": "Catalog attributes create.",
-        "operationId": "catalog.attributes.create",
+        "operationId": "attributes.create",
         "parameters": [],
         "responses": {
           "201": {
@@ -2303,7 +2303,7 @@
           "catalog"
         ],
         "summary": "Catalog category Attributes list.",
-        "operationId": "catalog.categoryAttributes.list",
+        "operationId": "categoryAttributes.list",
         "parameters": [
           {
             "name": "category_id",
@@ -2446,7 +2446,7 @@
           "catalog"
         ],
         "summary": "Catalog category Attributes create.",
-        "operationId": "catalog.categoryAttributes.create",
+        "operationId": "categoryAttributes.create",
         "parameters": [],
         "responses": {
           "201": {
@@ -2555,7 +2555,7 @@
           "catalog"
         ],
         "summary": "Catalog category Attributes update.",
-        "operationId": "catalog.categoryAttributes.update",
+        "operationId": "categoryAttributes.update",
         "parameters": [
           {
             "name": "bindingId",
@@ -2671,7 +2671,7 @@
           "catalog"
         ],
         "summary": "Catalog category Attributes delete.",
-        "operationId": "catalog.categoryAttributes.delete",
+        "operationId": "categoryAttributes.delete",
         "parameters": [
           {
             "name": "bindingId",
@@ -2712,7 +2712,7 @@
           "catalog"
         ],
         "summary": "Catalog price Lists list.",
-        "operationId": "catalog.priceLists.list",
+        "operationId": "priceLists.list",
         "parameters": [
           {
             "name": "currency_code",
@@ -2855,7 +2855,7 @@
           "catalog"
         ],
         "summary": "Catalog price Lists create.",
-        "operationId": "catalog.priceLists.create",
+        "operationId": "priceLists.create",
         "parameters": [],
         "responses": {
           "201": {
@@ -2964,7 +2964,7 @@
           "catalog"
         ],
         "summary": "Catalog price Lists update.",
-        "operationId": "catalog.priceLists.update",
+        "operationId": "priceLists.update",
         "parameters": [
           {
             "name": "priceListId",

@@ -44,18 +44,12 @@
     "permissionComposition": {
       "inheritanceMode": "module-catalog-with-overrides",
       "applicationModule": {
-        "manifestRef": "../../../../../specs/iam.module.manifest.json"
+        "manifestRef": "../../../../specs/iam.module.manifest.json"
       },
       "moduleCatalogRefs": [
         {
-          "moduleId": "merchandise",
-          "manifestRef": "../../../../../specs/iam.module.manifest.json",
-          "inheritPermissions": true,
-          "inheritRoles": true
-        },
-        {
           "moduleId": "shop",
-          "manifestRef": "../../../../../../sdkwork-shop/specs/iam.module.manifest.json",
+          "manifestRef": "../../../../../sdkwork-shop/specs/iam.module.manifest.json",
           "inheritPermissions": true,
           "inheritRoles": true
         }
