@@ -239,6 +239,7 @@ async fn backend_list_products(
         params.category_id.as_deref(),
         params.product_type.as_deref(),
         params.status.as_deref(),
+        None,
         params.page,
         params.page_size,
     ) {
@@ -380,6 +381,7 @@ async fn backend_list_spus(
         params.category_id.as_deref(),
         params.product_type.as_deref(),
         params.status.as_deref(),
+        None,
         params.page,
         params.page_size,
     ) {

@@ -377,20 +377,9 @@ impl PostgresCommerceCatalogStore {
         let limit = query.page_size.unwrap_or(20).min(200);
         let offset = (query.page.unwrap_or(1) - 1).max(0) * limit;
 
-        let rows = sqlx::query(
-            r#"
-            SELECT id, tenant_id, organization_id, spu_no, title, subtitle, description, product_type,
-                   category_id, status, published_at, visible_surfaces, created_at, updated_at
-            FROM commerce_product_spu
-            WHERE tenant_id = CAST($1 AS TEXT)
-              AND ($2 IS NULL OR organization_id = CAST($2 AS TEXT))
-              AND ($3 IS NULL OR category_id = CAST($3 AS TEXT))
-              AND ($4 IS NULL OR product_type = $4)
-              AND ($5 IS NULL OR status = $5)
-            ORDER BY created_at DESC
-            LIMIT $6 OFFSET $7
-            "#,
-        )
+        let sql = spu_list_sql(query.sort.as_deref());
+
+        let rows = sqlx::query(sql)
         .bind(&query.tenant_id)
         .bind(query.organization_id.as_deref())
         .bind(query.category_id.as_deref())
@@ -1124,6 +1113,66 @@ fn map_price_list_row(row: &sqlx::postgres::PgRow) -> PriceListRecord {
         ends_at: optional_string_cell(row, "ends_at"),
         created_at: string_cell(row, "created_at"),
         updated_at: string_cell(row, "updated_at"),
+    }
+}
+
+/// Selects a fixed `&'static str` SQL statement for listing SPUs by sort key.
+///
+/// Only whitelisted sort keys select a nontrivial statement (price ordering
+/// adds a `LEFT JOIN commerce_product_sku` and an aggregate `MIN(price)` sort);
+/// all other values fall back to `created_at DESC`. Each statement is a compiled
+/// static literal, so arbitrary user input is never interpolated into SQL.
+fn spu_list_sql(sort: Option<&str>) -> &'static str {
+    const SPU_LIST_SQL_DEFAULT: &str = r#"
+            SELECT id, tenant_id, organization_id, spu_no, title, subtitle, description, product_type,
+                   category_id, status, published_at, visible_surfaces, created_at, updated_at
+            FROM commerce_product_spu
+            WHERE tenant_id = CAST($1 AS TEXT)
+              AND ($2 IS NULL OR organization_id = CAST($2 AS TEXT))
+              AND ($3 IS NULL OR category_id = CAST($3 AS TEXT))
+              AND ($4 IS NULL OR product_type = $4)
+              AND ($5 IS NULL OR status = $5)
+            ORDER BY created_at DESC
+            LIMIT $6 OFFSET $7
+            "#;
+    const SPU_LIST_SQL_PRICE_ASC: &str = r#"
+            SELECT id, tenant_id, organization_id, spu_no, title, subtitle, description, product_type,
+                   category_id, status, published_at, visible_surfaces, created_at, updated_at
+            FROM commerce_product_spu
+            LEFT JOIN commerce_product_sku sku
+              ON sku.spu_id = commerce_product_spu.id
+             AND sku.tenant_id = commerce_product_spu.tenant_id
+             AND sku.status = 'active'
+            WHERE tenant_id = CAST($1 AS TEXT)
+              AND ($2 IS NULL OR organization_id = CAST($2 AS TEXT))
+              AND ($3 IS NULL OR category_id = CAST($3 AS TEXT))
+              AND ($4 IS NULL OR product_type = $4)
+              AND ($5 IS NULL OR status = $5)
+            GROUP BY commerce_product_spu.id
+            ORDER BY MIN(CAST(sku.price_amount AS NUMERIC)) ASC
+            LIMIT $6 OFFSET $7
+            "#;
+    const SPU_LIST_SQL_PRICE_DESC: &str = r#"
+            SELECT id, tenant_id, organization_id, spu_no, title, subtitle, description, product_type,
+                   category_id, status, published_at, visible_surfaces, created_at, updated_at
+            FROM commerce_product_spu
+            LEFT JOIN commerce_product_sku sku
+              ON sku.spu_id = commerce_product_spu.id
+             AND sku.tenant_id = commerce_product_spu.tenant_id
+             AND sku.status = 'active'
+            WHERE tenant_id = CAST($1 AS TEXT)
+              AND ($2 IS NULL OR organization_id = CAST($2 AS TEXT))
+              AND ($3 IS NULL OR category_id = CAST($3 AS TEXT))
+              AND ($4 IS NULL OR product_type = $4)
+              AND ($5 IS NULL OR status = $5)
+            GROUP BY commerce_product_spu.id
+            ORDER BY MIN(CAST(sku.price_amount AS NUMERIC)) DESC
+            LIMIT $6 OFFSET $7
+            "#;
+    match sort {
+        Some("price-asc") => SPU_LIST_SQL_PRICE_ASC,
+        Some("price-desc") => SPU_LIST_SQL_PRICE_DESC,
+        _ => SPU_LIST_SQL_DEFAULT,
     }
 }
 

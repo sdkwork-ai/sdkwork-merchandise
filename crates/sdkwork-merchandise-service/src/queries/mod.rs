@@ -46,6 +46,7 @@ pub struct ProductSpuListQuery {
     pub category_id: Option<String>,
     pub product_type: Option<String>,
     pub status: Option<String>,
+    pub sort: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }
@@ -147,7 +148,7 @@ impl_query_new!(CategoryRetrieveQuery, required: [tenant_id, category_id], optio
 impl_query_new!(AttributeListQuery, required: [tenant_id], optional: [organization_id, status], page: [page, page_size]);
 impl_query_new!(PriceListListQuery, required: [tenant_id], optional: [organization_id, status]);
 impl_query_new!(CategoryAttributeListQuery, required: [tenant_id], optional: [organization_id, category_id]);
-impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, category_id, product_type, status], page: [page, page_size]);
+impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, category_id, product_type, status, sort], page: [page, page_size]);
 impl_query_new!(ProductSpuRetrieveQuery, required: [tenant_id, spu_id], optional: []);
 impl_query_new!(ProductSkuListQuery, required: [tenant_id], optional: [organization_id, spu_id, status], page: [page, page_size]);
 impl_query_new!(ProductSkuRetrieveQuery, required: [tenant_id, sku_id], optional: []);
