@@ -18,7 +18,8 @@
         "development",
         "test",
         "staging",
-        "production"
+        "production",
+        "demo"
       ]
     }
   },
@@ -36,7 +37,9 @@
     "standalone.test": "etc/topology/standalone.test.env",
     "standalone.staging": "etc/topology/standalone.staging.env",
     "cloud.test": "etc/topology/cloud.test.env",
-    "cloud.staging": "etc/topology/cloud.staging.env"
+    "cloud.staging": "etc/topology/cloud.staging.env",
+    "standalone.demo": "etc/topology/standalone.demo.env",
+    "cloud.demo": "etc/topology/cloud.demo.env"
   },
   "envKeys": {
     "deploymentProfile": "SDKWORK_MERCHANDISE_DEPLOYMENT_PROFILE",
@@ -123,6 +126,24 @@
             "merchandise-staging.86offer.com",
             "merchandise-staging.86offer.cn"
           ]
+        },
+        "demo": {
+          "httpHosts": [
+            "merchandise-demo.sdkwork.com",
+            "merchandise-demo.birdcoder.com",
+            "merchandise-demo.dtupay.com",
+            "merchandise-demo.sdkwork.cn",
+            "merchandise-demo.birdcoder.cn",
+            "merchandise-demo.dtupay.cn",
+            "merchandise-demo.skubc.com",
+            "merchandise-demo.skubc.cn",
+            "merchandise-demo.zowalk.com",
+            "merchandise-demo.zowalk.cn",
+            "merchandise-demo.offer86.com",
+            "merchandise-demo.offer86.cn",
+            "merchandise-demo.86offer.com",
+            "merchandise-demo.86offer.cn"
+          ]
         }
       },
       "httpHosts": [
@@ -197,6 +218,24 @@
             "api-staging.offer86.cn",
             "api-staging.86offer.com",
             "api-staging.86offer.cn"
+          ]
+        },
+        "demo": {
+          "httpHosts": [
+            "api-demo.sdkwork.com",
+            "api-demo.birdcoder.com",
+            "api-demo.dtupay.com",
+            "api-demo.sdkwork.cn",
+            "api-demo.birdcoder.cn",
+            "api-demo.dtupay.cn",
+            "api-demo.skubc.com",
+            "api-demo.skubc.cn",
+            "api-demo.zowalk.com",
+            "api-demo.zowalk.cn",
+            "api-demo.offer86.com",
+            "api-demo.offer86.cn",
+            "api-demo.86offer.com",
+            "api-demo.86offer.cn"
           ]
         }
       },
@@ -325,6 +364,14 @@
           "application.public-ingress",
           "platform.api-gateway"
         ]
+      },
+      "standalone.demo": {
+        "processes": [],
+        "healthSurfaces": []
+      },
+      "cloud.demo": {
+        "processes": [],
+        "healthSurfaces": []
       }
     }
   },
