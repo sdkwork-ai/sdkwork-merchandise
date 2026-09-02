@@ -1,11 +1,15 @@
 //! API assembly for sdkwork-merchandise.
 //! Application bootstrap lives in `bootstrap.rs`; route inventory is in `assembly-manifest.json`.
+use sdkwork_database_sqlx::DatabasePool;
+use sdkwork_web_bootstrap::WebModule;
 // SDKWORK-ASSEMBLY-LIB-CUSTOM
 
 mod bootstrap;
 mod generated;
 
-pub use bootstrap::{assemble_api_router, ApiAssembly, ApiAssemblyContext};
+pub use bootstrap::{
+    assemble_api_router, web_module_with_context, ApiAssembly, ApiAssemblyContext,
+};
 
 pub async fn assemble_api_router_from_env() -> Result<ApiAssembly, String> {
     let host = std::sync::Arc::new(
@@ -42,4 +46,21 @@ pub async fn assemble_api_router_with_pool(
 
 pub fn assembly_route_count() -> usize {
     generated::ROUTE_CRATE_COUNT
+}
+
+/// Canonical Web Module definition for this application
+/// (API_ASSEMBLY_SPEC §4.1.1): the complete HTTP surface — every route,
+/// manifest, and OpenAPI document of this owner — as one installable module.
+pub async fn web_module() -> Result<WebModule, String> {
+    Ok(WebModule::from_contribution(
+        assemble_api_router_from_env().await?,
+    ))
+}
+
+/// Same as [`web_module`] but composed on a process-shared database pool
+/// (platform gateways, API_ASSEMBLY_SPEC §4.1.1).
+pub async fn web_module_with_pool(pool: DatabasePool) -> Result<WebModule, String> {
+    Ok(WebModule::from_contribution(
+        assemble_api_router_with_pool(pool).await?,
+    ))
 }

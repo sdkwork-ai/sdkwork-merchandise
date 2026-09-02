@@ -8,9 +8,7 @@ use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use sdkwork_contract_service::CommerceMoney;
 use sdkwork_iam_context_service::IamAppContext;
-use sdkwork_merchandise_repository_sqlx::{
-    PostgresCommerceCatalogStore,
-};
+use sdkwork_merchandise_repository_sqlx::PostgresCommerceCatalogStore;
 use sdkwork_merchandise_service::{
     ArchiveSpuCommand, AttributeListQuery, CategoryAttributeListQuery, CategoryListQuery,
     CreateAttributeCommand, CreateCategoryAttributeCommand, CreateCategoryCommand,

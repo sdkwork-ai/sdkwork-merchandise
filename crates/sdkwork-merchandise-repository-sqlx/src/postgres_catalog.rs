@@ -380,16 +380,16 @@ impl PostgresCommerceCatalogStore {
         let sql = spu_list_sql(query.sort.as_deref());
 
         let rows = sqlx::query(sql)
-        .bind(&query.tenant_id)
-        .bind(query.organization_id.as_deref())
-        .bind(query.category_id.as_deref())
-        .bind(query.product_type.as_deref())
-        .bind(query.status.as_deref())
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| store_error("failed to list spus", e))?;
+            .bind(&query.tenant_id)
+            .bind(query.organization_id.as_deref())
+            .bind(query.category_id.as_deref())
+            .bind(query.product_type.as_deref())
+            .bind(query.status.as_deref())
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| store_error("failed to list spus", e))?;
 
         Ok(rows.iter().map(map_spu_row).collect())
     }

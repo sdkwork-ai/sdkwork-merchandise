@@ -5,9 +5,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use sdkwork_contract_service::CommerceServiceError;
-use sdkwork_merchandise_repository_sqlx::{
-    PostgresCommerceCatalogStore,
-};
+use sdkwork_merchandise_repository_sqlx::PostgresCommerceCatalogStore;
 use sdkwork_merchandise_service::{
     AddCartItemCommand, AddressListQuery, AddressRecord, ArchiveSpuCommand, AttributeListQuery,
     AttributeRecord, CartItemRecord, CartRetrieveQuery, CategoryAttributeListQuery,
@@ -591,7 +589,6 @@ pub struct AddressResponse {
     updated_at: String,
 }
 
-
 impl CommerceCatalogStore for PostgresCommerceCatalogStore {
     fn list_categories<'a>(
         &'a self,
@@ -1096,6 +1093,5 @@ pub fn map_address(value: AddressRecord) -> AddressResponse {
 mod backend_catalog_router;
 
 pub use backend_catalog_router::{
-    backend_catalog_router_with_postgres_pool,
-    build_backend_catalog_router,
+    backend_catalog_router_with_postgres_pool, build_backend_catalog_router,
 };
