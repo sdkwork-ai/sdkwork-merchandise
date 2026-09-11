@@ -1,4 +1,5 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-api-merchandise-standalone-gateway"
 version.workspace = true
 edition.workspace = true
@@ -21,3 +22,7 @@ tracing-subscriber = { workspace = true }
 sdkwork-web-bootstrap = { workspace = true }
 sdkwork-iam-web-adapter.workspace = true
 
+
+
+[lints]
+workspace = true
