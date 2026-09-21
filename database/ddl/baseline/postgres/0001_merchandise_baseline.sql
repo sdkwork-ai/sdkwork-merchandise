@@ -112,9 +112,13 @@ CREATE TABLE IF NOT EXISTS commerce_price_list (
     price_list_no TEXT NOT NULL,
     currency_code TEXT NOT NULL DEFAULT 'CNY',
     market_code TEXT,
+    customer_segment TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     starts_at TEXT,
     ends_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_commerce_price_list_segment
+    ON commerce_price_list (tenant_id, customer_segment, status);
