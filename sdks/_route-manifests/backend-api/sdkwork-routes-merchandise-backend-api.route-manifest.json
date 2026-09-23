@@ -17,7 +17,7 @@
     {
       "method": "GET",
       "path": "/backend/v3/api/catalog/categories",
-      "operationId": "catalog.categories.management.list",
+      "operationId": "categories.management.list",
       "tags": [
         "catalog"
       ],
@@ -39,7 +39,7 @@
     {
       "method": "POST",
       "path": "/backend/v3/api/catalog/categories",
-      "operationId": "catalog.categories.create",
+      "operationId": "categories.create",
       "tags": [
         "catalog"
       ],
@@ -61,7 +61,7 @@
     {
       "method": "PATCH",
       "path": "/backend/v3/api/catalog/categories/{categoryId}",
-      "operationId": "catalog.categories.update",
+      "operationId": "categories.update",
       "tags": [
         "catalog"
       ],
@@ -83,7 +83,7 @@
     {
       "method": "DELETE",
       "path": "/backend/v3/api/catalog/categories/{categoryId}",
-      "operationId": "catalog.categories.delete",
+      "operationId": "categories.delete",
       "tags": [
         "catalog"
       ],
@@ -105,7 +105,7 @@
     {
       "method": "GET",
       "path": "/backend/v3/api/catalog/products",
-      "operationId": "catalog.products.management.list",
+      "operationId": "products.management.list",
       "tags": [
         "catalog"
       ],
@@ -127,7 +127,7 @@
     {
       "method": "POST",
       "path": "/backend/v3/api/catalog/products",
-      "operationId": "catalog.products.create",
+      "operationId": "products.create",
       "tags": [
         "catalog"
       ],
@@ -149,7 +149,7 @@
     {
       "method": "GET",
       "path": "/backend/v3/api/catalog/products/{productId}",
-      "operationId": "catalog.products.management.retrieve",
+      "operationId": "products.management.retrieve",
       "tags": [
         "catalog"
       ],
@@ -171,7 +171,7 @@
     {
       "method": "PATCH",
       "path": "/backend/v3/api/catalog/products/{productId}",
-      "operationId": "catalog.products.update",
+      "operationId": "products.update",
       "tags": [
         "catalog"
       ],
@@ -193,7 +193,7 @@
     {
       "method": "DELETE",
       "path": "/backend/v3/api/catalog/products/{productId}",
-      "operationId": "catalog.products.delete",
+      "operationId": "products.delete",
       "tags": [
         "catalog"
       ],
@@ -213,31 +213,31 @@
       "apiSurface": "backend-api"
     },
     {
-      "method": "GET",
-      "path": "/backend/v3/api/catalog/spus",
-      "operationId": "catalog.spus.management.list",
+      "method": "POST",
+      "path": "/backend/v3/api/catalog/products/{productId}/publish",
+      "operationId": "products.publish",
       "tags": [
         "catalog"
       ],
       "auth": {
         "mode": "dual-token",
         "required": true,
-        "permission": "commerce.catalog.read"
+        "permission": "commerce.catalog.manage"
       },
       "ownership": {
         "owner": "sdkwork-shop",
         "apiAuthority": "sdkwork-shop-backend-api"
       },
       "source": {
-        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/spus"
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/products/{productId}/publish"
       },
       "requestContext": "WebRequestContext",
       "apiSurface": "backend-api"
     },
     {
       "method": "POST",
-      "path": "/backend/v3/api/catalog/spus",
-      "operationId": "catalog.spus.create",
+      "path": "/backend/v3/api/catalog/products/{productId}/archive",
+      "operationId": "products.archive",
       "tags": [
         "catalog"
       ],
@@ -251,73 +251,7 @@
         "apiAuthority": "sdkwork-shop-backend-api"
       },
       "source": {
-        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/spus"
-      },
-      "requestContext": "WebRequestContext",
-      "apiSurface": "backend-api"
-    },
-    {
-      "method": "PATCH",
-      "path": "/backend/v3/api/catalog/spus/{spuId}",
-      "operationId": "catalog.spus.update",
-      "tags": [
-        "catalog"
-      ],
-      "auth": {
-        "mode": "dual-token",
-        "required": true,
-        "permission": "commerce.catalog.manage"
-      },
-      "ownership": {
-        "owner": "sdkwork-shop",
-        "apiAuthority": "sdkwork-shop-backend-api"
-      },
-      "source": {
-        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/spus/{spuId}"
-      },
-      "requestContext": "WebRequestContext",
-      "apiSurface": "backend-api"
-    },
-    {
-      "method": "POST",
-      "path": "/backend/v3/api/catalog/spus/{spuId}/publish",
-      "operationId": "catalog.spus.publish",
-      "tags": [
-        "catalog"
-      ],
-      "auth": {
-        "mode": "dual-token",
-        "required": true,
-        "permission": "commerce.catalog.manage"
-      },
-      "ownership": {
-        "owner": "sdkwork-shop",
-        "apiAuthority": "sdkwork-shop-backend-api"
-      },
-      "source": {
-        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/spus/{spuId}/publish"
-      },
-      "requestContext": "WebRequestContext",
-      "apiSurface": "backend-api"
-    },
-    {
-      "method": "POST",
-      "path": "/backend/v3/api/catalog/spus/{spuId}/archive",
-      "operationId": "catalog.spus.archive",
-      "tags": [
-        "catalog"
-      ],
-      "auth": {
-        "mode": "dual-token",
-        "required": true,
-        "permission": "commerce.catalog.manage"
-      },
-      "ownership": {
-        "owner": "sdkwork-shop",
-        "apiAuthority": "sdkwork-shop-backend-api"
-      },
-      "source": {
-        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/spus/{spuId}/archive"
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/products/{productId}/archive"
       },
       "requestContext": "WebRequestContext",
       "apiSurface": "backend-api"
@@ -325,7 +259,7 @@
     {
       "method": "GET",
       "path": "/backend/v3/api/catalog/skus",
-      "operationId": "catalog.skus.list",
+      "operationId": "skus.list",
       "tags": [
         "catalog"
       ],
@@ -347,7 +281,7 @@
     {
       "method": "POST",
       "path": "/backend/v3/api/catalog/skus",
-      "operationId": "catalog.skus.create",
+      "operationId": "skus.create",
       "tags": [
         "catalog"
       ],
@@ -369,7 +303,7 @@
     {
       "method": "PATCH",
       "path": "/backend/v3/api/catalog/skus/{skuId}",
-      "operationId": "catalog.skus.update",
+      "operationId": "skus.update",
       "tags": [
         "catalog"
       ],
@@ -391,7 +325,7 @@
     {
       "method": "DELETE",
       "path": "/backend/v3/api/catalog/skus/{skuId}",
-      "operationId": "catalog.skus.delete",
+      "operationId": "skus.delete",
       "tags": [
         "catalog"
       ],
@@ -413,7 +347,7 @@
     {
       "method": "GET",
       "path": "/backend/v3/api/catalog/attributes",
-      "operationId": "catalog.attributes.management.list",
+      "operationId": "attributes.management.list",
       "tags": [
         "catalog"
       ],
@@ -435,7 +369,7 @@
     {
       "method": "POST",
       "path": "/backend/v3/api/catalog/attributes",
-      "operationId": "catalog.attributes.create",
+      "operationId": "attributes.create",
       "tags": [
         "catalog"
       ],
@@ -457,7 +391,7 @@
     {
       "method": "GET",
       "path": "/backend/v3/api/catalog/category_attributes",
-      "operationId": "catalog.categoryAttributes.list",
+      "operationId": "categoryAttributes.list",
       "tags": [
         "catalog"
       ],
@@ -479,7 +413,7 @@
     {
       "method": "POST",
       "path": "/backend/v3/api/catalog/category_attributes",
-      "operationId": "catalog.categoryAttributes.create",
+      "operationId": "categoryAttributes.create",
       "tags": [
         "catalog"
       ],
@@ -501,7 +435,7 @@
     {
       "method": "PATCH",
       "path": "/backend/v3/api/catalog/category_attributes/{bindingId}",
-      "operationId": "catalog.categoryAttributes.update",
+      "operationId": "categoryAttributes.update",
       "tags": [
         "catalog"
       ],
@@ -523,7 +457,7 @@
     {
       "method": "DELETE",
       "path": "/backend/v3/api/catalog/category_attributes/{bindingId}",
-      "operationId": "catalog.categoryAttributes.delete",
+      "operationId": "categoryAttributes.delete",
       "tags": [
         "catalog"
       ],
@@ -545,7 +479,7 @@
     {
       "method": "GET",
       "path": "/backend/v3/api/catalog/price_lists",
-      "operationId": "catalog.priceLists.list",
+      "operationId": "priceLists.list",
       "tags": [
         "catalog"
       ],
@@ -567,7 +501,7 @@
     {
       "method": "POST",
       "path": "/backend/v3/api/catalog/price_lists",
-      "operationId": "catalog.priceLists.create",
+      "operationId": "priceLists.create",
       "tags": [
         "catalog"
       ],
@@ -589,7 +523,7 @@
     {
       "method": "PATCH",
       "path": "/backend/v3/api/catalog/price_lists/{priceListId}",
-      "operationId": "catalog.priceLists.update",
+      "operationId": "priceLists.update",
       "tags": [
         "catalog"
       ],

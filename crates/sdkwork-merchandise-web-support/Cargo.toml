@@ -11,6 +11,7 @@ publish.workspace = true
 [lints]
 workspace = true
 [lib]
+name = "sdkwork_merchandise_web_support"
 path = "src/lib.rs"
 
 [dependencies]
@@ -19,6 +20,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 sdkwork_contract_service.workspace = true
+sdkwork-database-id = { workspace = true }
 sdkwork_merchandise_repository_sqlx.workspace = true
 sdkwork_merchandise_service.workspace = true
 sdkwork-iam-context-service.workspace = true

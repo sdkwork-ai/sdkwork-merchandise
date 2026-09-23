@@ -1,2 +1,21 @@
--- Minimal bootstrap seed for merchandise
+-- 001_bootstrap.sql — intentional no-op bootstrap seed for the merchandise module.
+--
+-- This file exists because `seed.manifest.json` names it in the `standard` profile, and the module
+-- bootstrap step expects a script at that position in the plan. It deliberately inserts nothing.
+--
+-- Required reference data lives in the two seeds that run alongside it:
+--
+--   * `common/001_currency.sql`              — the `commerce_currency` rows that define
+--                                              `minor_unit_exponent` and `rounding_mode`. Without
+--                                              them no SKU can be priced, because the repository
+--                                              reads the scale from that table rather than assuming
+--                                              a literal such as `/ 100`.
+--   * `common/001_merchandise_bootstrap.sql` — the tenant-100001 category and attribute skeleton.
+--
+-- Locale-dependent rows are tracked as checksummed locale sets in `seed.manifest.json`
+-- (`localeSets`), not here.
+--
+-- Keep the statement: an empty file reads as a packaging failure, a `SELECT 1` reads as an
+-- intentional no-op, and `tests/contract/seed-manifest-closure.test.mjs` asserts every path the
+-- manifest names resolves to a real file.
 SELECT 1;

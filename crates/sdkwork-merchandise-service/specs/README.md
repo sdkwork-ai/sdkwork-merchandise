@@ -18,10 +18,20 @@ global SDKWork standards remain authoritative.
 
 ## Public Contract
 
-- Service port: `SingleSkuMerchandiseRepositoryPort`.
-- Service facade: `SingleSkuMerchandiseService`.
-- Nullable update contract: `NullablePatch<T>` distinguishes omitted, set, and
-  explicit-clear states for `description` and `original_price_amount`.
+- Service contract: `catalog_service_contract()` — capability tokens are the
+  registered backend route operation ids, verbatim, so the declared set and the
+  route manifest are checkable as a plain set equality.
+- Repository port: `CatalogRepositoryPort`, owned here as a trait and
+  implemented by the repository owner; the required-port set is pinned by
+  `CatalogPortRequirement::standard_commands`.
+- Domain axes: the typed `ProductType`, `ProductStatus`, `FulfillmentType`,
+  `InventoryTrackingMode`, and `LifecycleStatus` enums. Each owns one baseline
+  CHECK vocabulary and is pinned to it by the
+  `storage_vocabulary_is_accepted_by_the_baseline_check_constraints` test.
+- Typed commands and queries for the category, attribute, price-list, SPU, and
+  SKU surfaces. The command set is the write model the repository port consumes;
+  there is no parallel draft family. Identifier fields cross this boundary as
+  decimal strings, never as `number`.
 - Package export: `.`.
 - No HTTP route or generated SDK is owned by this crate.
 

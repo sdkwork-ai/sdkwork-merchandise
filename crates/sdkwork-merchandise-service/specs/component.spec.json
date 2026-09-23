@@ -38,7 +38,7 @@
     {
       "file": "API_SPEC.md",
       "path": "../../../../sdkwork-specs/API_SPEC.md",
-      "purpose": "Partial-update omission and explicit-null semantics."
+      "purpose": "Response envelope, error shape, and int64 wire contract."
     },
     {
       "file": "PAGINATION_SPEC.md",
@@ -78,13 +78,23 @@
     ],
     "providedPorts": [
       {
-        "name": "singleSkuMerchandiseService",
-        "export": "."
+        "name": "catalogServiceContract",
+        "export": ".",
+        "target": "sdkwork_merchandise_service::catalog_service_contract"
+      },
+      {
+        "name": "CatalogRepositoryPort",
+        "export": ".",
+        "target": "sdkwork_merchandise_service::CatalogRepositoryPort"
       }
     ],
     "requiredPorts": [
       {
-        "name": "singleSkuMerchandiseRepository",
+        "name": "catalogRepository",
+        "export": "."
+      },
+      {
+        "name": "idempotencyRepository",
         "export": "."
       }
     ],

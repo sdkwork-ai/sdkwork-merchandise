@@ -10,19 +10,18 @@ publish.workspace = true
 [lints]
 workspace = true
 [lib]
+name = "sdkwork_merchandise_repository_sqlx"
 path = "src/lib.rs"
 
 [dependencies]
-async-trait = { workspace = true }
+# `chrono` reads TIMESTAMPTZ columns; `sqlx`'s chrono feature supplies the codec.
 chrono = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+sdkwork-database-id = { workspace = true }
+sdkwork-commerce-money = { workspace = true }
 sdkwork_contract_service.workspace = true
 sdkwork_merchandise_service.workspace = true
-sdkwork-database-id.workspace = true
-sdkwork-database-sqlx.workspace = true
-sqlx = { workspace = true }
-uuid = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

@@ -1,6 +1,7 @@
 ﻿[workspace]
 resolver = "2"
 members = [
+    "crates/sdkwork-commerce-money",
     "crates/sdkwork-api-merchandise-assembly",
   "crates/sdkwork-merchandise-service",
   "crates/sdkwork-merchandise-repository-sqlx",
@@ -62,6 +63,7 @@ sdkwork-database-lifecycle = { path = "../sdkwork-database/crates/sdkwork-databa
 sdkwork-database-spi = { path = "../sdkwork-database/crates/sdkwork-database-spi" }
 sdkwork-database-sqlx = { path = "../sdkwork-database/crates/sdkwork-database-sqlx", features = ["postgres"] }
 sdkwork-database-ops-http = { path = "../sdkwork-database/crates/sdkwork-database-ops-http" }
+sdkwork-commerce-money = { path = "crates/sdkwork-commerce-money" }
 sdkwork_merchandise_service = { path = "crates/sdkwork-merchandise-service", package = "sdkwork-merchandise-service" }
 sdkwork_merchandise_repository_sqlx = { path = "crates/sdkwork-merchandise-repository-sqlx", package = "sdkwork-merchandise-repository-sqlx" }
 sdkwork_merchandise_web_support = { path = "crates/sdkwork-merchandise-web-support", package = "sdkwork-merchandise-web-support" }

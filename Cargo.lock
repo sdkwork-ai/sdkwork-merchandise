@@ -1709,6 +1709,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdkwork-commerce-money"
+version = "0.1.0"
+
+[[package]]
 name = "sdkwork-contract-service"
 version = "0.1.0"
 
@@ -1886,39 +1890,35 @@ dependencies = [
 name = "sdkwork-merchandise-repository-sqlx"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "chrono",
+ "sdkwork-commerce-money",
  "sdkwork-contract-service",
  "sdkwork-database-id",
- "sdkwork-database-sqlx",
  "sdkwork-merchandise-service",
- "serde",
- "serde_json",
  "sqlx",
  "tokio",
- "uuid",
+ "tracing",
 ]
 
 [[package]]
 name = "sdkwork-merchandise-service"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "chrono",
  "sdkwork-contract-service",
- "sdkwork-utils-rust",
- "serde",
  "serde_json",
  "tokio",
- "uuid",
 ]
 
 [[package]]
 name = "sdkwork-merchandise-service-host"
 version = "0.1.0"
 dependencies = [
+ "sdkwork-database-id",
  "sdkwork-database-sqlx",
  "sdkwork-merchandise-database-host",
+ "sdkwork-web-bootstrap",
+ "sdkwork-web-core",
+ "tracing",
 ]
 
 [[package]]
@@ -1927,6 +1927,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "sdkwork-contract-service",
+ "sdkwork-database-id",
  "sdkwork-iam-context-service",
  "sdkwork-merchandise-repository-sqlx",
  "sdkwork-merchandise-service",

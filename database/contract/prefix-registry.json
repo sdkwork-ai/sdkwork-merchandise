@@ -1,11 +1,11 @@
 {
+  "schemaVersion": 1,
+  "kind": "sdkwork.database.prefix-registry",
   "prefixes": [
     {
       "prefix": "commerce_",
       "domain": "merchandise",
-      "owner": "sdkwork-commerce-platform"
+      "owner": "merchandise-platform"
     }
-  ],
-  "schemaVersion": 1,
-  "kind": "sdkwork.database.prefix-registry"
+  ]
 }

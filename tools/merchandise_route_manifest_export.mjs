@@ -95,7 +95,13 @@ const rust = [
 
 function synchronize(relativePath, content) {
   const targetPath = path.join(root, relativePath);
-  const current = existsSync(targetPath) ? readFileSync(targetPath, 'utf8') : '';
+  // Generated content is always LF; a Windows working tree checks the same
+  // files out as CRLF (this repository carries no `.gitattributes`), so
+  // normalise before comparing to keep this a content check rather than a
+  // line-ending check.
+  const current = existsSync(targetPath)
+    ? readFileSync(targetPath, 'utf8').replace(/\r\n/g, '\n')
+    : '';
   if (checkMode && current !== content) throw new Error(`${relativePath} is not synchronized`);
   if (!checkMode && current !== content) {
     mkdirSync(path.dirname(targetPath), { recursive: true });

@@ -7,11 +7,14 @@
       "workspace": "sdkwork-shop-backend-sdk",
       "surface": "backend-api",
       "apiPrefix": "/backend/v3/api",
-      "connectivityPlane": "application",
-      "runtimeMode": "same-origin-embedded",
+      "connectivityPlane": "platform",
+      "runtimeMode": "external-via-platform-surface",
       "mountStatus": null,
       "envKey": "VITE_SDKWORK_SHOP_BACKEND_API_BASE_URL",
-      "forbidApplicationSameOriginFallback": false,
+      "forbidApplicationSameOriginFallback": true,
+      "sdkOwner": "sdkwork-shop",
+      "apiAuthority": "sdkwork-shop-backend-api",
+      "consumerSdkOwner": "sdkwork-merchandise",
       "corePackage": "@sdkwork/merchandise-pc-admin-core",
       "source": "apps/sdkwork-merchandise-pc/packages/sdkwork-merchandise-pc-admin-core/specs/component.spec.json"
     }
@@ -80,7 +83,10 @@
         "source": "crates/sdkwork-api-merchandise-assembly/specs/component.spec.json",
         "layerRole": "runtime-composition",
         "publicExports": [
-          "."
+          "sdkwork_api_merchandise_assembly::assemble_api_router",
+          "sdkwork_api_merchandise_assembly::assemble_api_router_from_env",
+          "sdkwork_api_merchandise_assembly::assemble_api_router_with_pool",
+          "sdkwork_api_merchandise_assembly::ApiAssembly"
         ],
         "providedPorts": [],
         "requiredPorts": [],
@@ -88,7 +94,35 @@
         "routeManifest": "assembly-manifest.json",
         "runtimeEntrypoints": [
           "sdkwork_api_merchandise_assembly::assemble_api_router",
-          "sdkwork_api_merchandise_assembly::assemble_api_router_from_env"
+          "sdkwork_api_merchandise_assembly::assemble_api_router_from_env",
+          "sdkwork_api_merchandise_assembly::assemble_api_router_with_pool"
+        ],
+        "dependencyApiSurfaces": []
+      },
+      {
+        "name": "sdkwork-api-merchandise-standalone-gateway",
+        "type": "rust-api-standalone-gateway",
+        "root": "crates/sdkwork-api-merchandise-standalone-gateway",
+        "domain": "commerce",
+        "capability": "merchandise",
+        "surface": "gateway-api",
+        "languages": [
+          "rust"
+        ],
+        "source": "crates/sdkwork-api-merchandise-standalone-gateway/specs/component.spec.json",
+        "layerRole": "runtime-gateway",
+        "publicExports": [],
+        "providedPorts": [],
+        "requiredPorts": [
+          {
+            "name": "applicationApiAssembly",
+            "export": "sdkwork_api_merchandise_assembly::assemble_api_router_from_env"
+          }
+        ],
+        "sdkDependencies": [],
+        "routeManifest": null,
+        "runtimeEntrypoints": [
+          "src/main.rs"
         ],
         "dependencyApiSurfaces": []
       },
@@ -109,17 +143,14 @@
         ],
         "providedPorts": [
           {
-            "name": "singleSkuMerchandiseRepository",
-            "export": "."
+            "name": "catalogRepository",
+            "export": ".",
+            "target": "sdkwork_merchandise_repository_sqlx::PostgresCommerceCatalogStore"
           }
         ],
         "requiredPorts": [
           {
             "name": "databasePool",
-            "export": "."
-          },
-          {
-            "name": "entityIdGenerator",
             "export": "."
           }
         ],
@@ -145,13 +176,23 @@
         ],
         "providedPorts": [
           {
-            "name": "singleSkuMerchandiseService",
-            "export": "."
+            "name": "catalogServiceContract",
+            "export": ".",
+            "target": "sdkwork_merchandise_service::catalog_service_contract"
+          },
+          {
+            "name": "CatalogRepositoryPort",
+            "export": ".",
+            "target": "sdkwork_merchandise_service::CatalogRepositoryPort"
           }
         ],
         "requiredPorts": [
           {
-            "name": "singleSkuMerchandiseRepository",
+            "name": "catalogRepository",
+            "export": "."
+          },
+          {
+            "name": "idempotencyRepository",
             "export": "."
           }
         ],
@@ -181,7 +222,6 @@
         "routeManifest": null,
         "runtimeEntrypoints": [
           "backend_catalog_router_with_postgres_pool",
-          "backend_catalog_router_with_sqlite_pool",
           "build_backend_catalog_router"
         ],
         "dependencyApiSurfaces": []
@@ -273,6 +313,9 @@
           "dependencies": [
             "axum",
             "tokio",
+            "sdkwork-web-bootstrap",
+            "sdkwork-web-core",
+            "sdkwork-database-sqlx",
             "sdkwork-merchandise-service-host",
             "sdkwork-routes-merchandise-backend-api"
           ]
@@ -284,13 +327,18 @@
             "sdkwork-api-merchandise-assembly",
             "axum",
             "serde-json",
-            "sdkwork-merchandise-service-host",
             "tokio",
             "tower-http",
             "tracing",
             "tracing-subscriber",
-            "sdkwork-web-bootstrap"
+            "sdkwork-web-bootstrap",
+            "sdkwork-iam-web-adapter"
           ]
+        },
+        {
+          "packageName": "sdkwork-commerce-money",
+          "manifest": "crates/sdkwork-commerce-money/Cargo.toml",
+          "dependencies": []
         },
         {
           "packageName": "sdkwork-merchandise-database-host",
@@ -307,16 +355,9 @@
           "packageName": "sdkwork-merchandise-repository-sqlx",
           "manifest": "crates/sdkwork-merchandise-repository-sqlx/Cargo.toml",
           "dependencies": [
-            "async-trait",
-            "chrono",
-            "serde",
-            "serde-json",
+            "sqlx",
             "sdkwork-contract-service",
             "sdkwork-merchandise-service",
-            "sdkwork-database-id",
-            "sdkwork-database-sqlx",
-            "sqlx",
-            "uuid",
             "tokio"
           ]
         },
@@ -332,13 +373,8 @@
           "packageName": "sdkwork-merchandise-service",
           "manifest": "crates/sdkwork-merchandise-service/Cargo.toml",
           "dependencies": [
-            "async-trait",
-            "chrono",
-            "serde",
-            "serde-json",
-            "uuid",
             "sdkwork-contract-service",
-            "sdkwork-utils-rust",
+            "serde-json",
             "tokio"
           ]
         },
@@ -392,7 +428,7 @@
     }
   },
   "env": {},
-  "requiresPlatformApiSurface": false,
+  "requiresPlatformApiSurface": true,
   "issues": [],
   "meta": {
     "resolver": "sdkwork-specs/tools/lib/composition-resolver.mjs",

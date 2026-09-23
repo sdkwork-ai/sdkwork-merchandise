@@ -6,6 +6,7 @@
   "profiles": {
     "standard": {
       "common": [
+        "common/001_currency.sql",
         "common/001_merchandise_bootstrap.sql",
         "001_bootstrap.sql"
       ],
@@ -19,7 +20,7 @@
       }
     }
   },
-  "i18nVersion": "1.0.0",
+  "i18nVersion": "2.0.0",
   "fallbackLocale": "zh-CN",
   "supportedLocales": [
     "zh-CN",
@@ -36,17 +37,17 @@
   ],
   "localeSets": {
     "zh-CN": {
-      "version": "1.0.0",
+      "version": "2.0.0",
       "required": true,
-      "checksum": "sha256:5cfec4e9ad3a38b49caa95c499c3d81262aa29c706c3222acf6f6f31a3561da4",
+      "checksum": "sha256:e659bbae44ca0e6a853fa758d49862da1e236a40f53e9c491fecc2f2e7a5cab0",
       "files": [
         "locales/zh-CN/001_sku_locale.sql"
       ]
     },
     "en-US": {
-      "version": "1.0.0",
+      "version": "2.0.0",
       "required": false,
-      "checksum": "sha256:00f8f19db94d32fef672285c8313032a978587487bf278855cae292908e928d6",
+      "checksum": "sha256:1cd6ac3013bb8eebdb27ce029dd0eab0176d549b0aa58302030a8ebdb9e0253c",
       "files": [
         "locales/en-US/001_sku_locale.sql"
       ]

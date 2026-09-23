@@ -3,29 +3,19 @@
 - Domain: `commerce`
 - Capability: `merchandise`
 - Package type: Rust SQLx repository crate
-- Status: stable
+- Status: active development
 
-This crate is the SQL persistence adapter for merchandise-owned data. It
-implements service ports with the approved `sdkwork-database-sqlx`
-`DatabasePool` and supports SQLite and PostgreSQL without owning pool
-construction or schema lifecycle.
+This crate is the SQL persistence adapter for merchandise-owned catalog data.
+It serves the catalog repository surface against PostgreSQL and does not own
+pool construction, schema lifecycle, or HTTP transport.
 
 ## Public API
 
-- `SqlxSingleSkuMerchandiseRepository::new(DatabasePool, Arc<dyn IdGenerator>)`
-  implements `SingleSkuMerchandiseRepositoryPort` with an injected approved ID
-  provider.
-- `SqlxSingleSkuMerchandiseRepository::with_snowflake_node_id` is a convenience
-  constructor for hosts that already own a configured Snowflake node id.
-- `SqliteCommerceCatalogStore` and `PostgresCommerceCatalogStore` expose the
-  existing catalog repository surfaces.
-
-The single-SKU repository performs tenant- and organization-scoped bounded
-listing, atomic one-SPU/one-SKU creation, deterministic idempotency business
-numbers, Snowflake primary ids, replay verification, and coordinated SPU/SKU
-updates. Nullable PATCH fields bind presence separately from value so omission
-preserves state while explicit null clears `description` or
-`original_price_amount`.
+- `PostgresCommerceCatalogStore::new(PgPool)` is the single exported adapter. It
+  serves category, attribute, category-attribute binding, price-list, SPU, and
+  SKU operations for the catalog repository port.
+- No other module is part of the public surface; consumers integrate through the
+  package export only.
 
 ## Required SDK Surface
 
@@ -34,24 +24,31 @@ and does not call HTTP APIs.
 
 ## Configuration
 
-The host must construct `DatabasePool` through `sdkwork-database` and inject an
-approved `sdkwork-database-id` generator using its runtime profile. This crate
-does not read environment variables, choose a production Snowflake node, or
-create production pools directly.
+The composition root constructs the `sqlx::PgPool` and injects it. This crate
+does not read environment variables and does not create production pools
+directly. Schema registration, migrations, seeds, and drift checks remain owned
+by the database lifecycle layer.
 
 ## Deployment Profile And Runtime Target Behavior
 
-SQLite and PostgreSQL use equivalent typed repository operations. SQL is
-parameter-bound, listing is performed with store-level `LIMIT` and `OFFSET`,
-and create/update operations use transactions. Database migrations and schema
-registration remain owned by the database lifecycle layer.
+Authoritative-server persistence for this capability is PostgreSQL only; there
+is no SQLite deployment target. SQL is parameter-bound, listing uses store-level
+`LIMIT`/`OFFSET`, and multi-row writes run inside a transaction.
 
 ## Security
 
-Every single-SKU query and write includes tenant scope. Organization scope is
-required for writes and supported as an explicit filter for tenant-wide admin
-listing. Fulfillment type is part of the owner boundary so one consumer domain
-cannot mutate another domain's SKU.
+Every query and write carries tenant scope, and organization scope is applied
+where the operation requires it. Cross-domain tables are out of bounds for this
+crate: carts and buyer addresses belong to `sdkwork-catalog`, inventory belongs
+to `sdkwork-inventory`.
+
+## Known Open Work
+
+The adapter still emits legacy `uuid_v7()` text identifiers and ISO-8601 text
+timestamps, and still binds prices as text. The merchandise baseline defines
+`BIGINT` identifiers, `TIMESTAMPTZ` timestamps, and `*_minor BIGINT` money with
+an explicit currency and scale. Aligning this adapter to the baseline is a
+tracked work item and has not landed yet.
 
 ## Extension Points
 

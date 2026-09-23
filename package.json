@@ -24,6 +24,7 @@
     "api:materialize:route-manifest": "node tools/merchandise_route_manifest_export.mjs",
     "api:check:route-manifest": "node tools/merchandise_route_manifest_export.mjs --check",
     "db:validate": "node ../sdkwork-specs/tools/check-database-framework-standard.mjs --root .",
+    "db:verify:baseline": "python tests/verify_merchandise_baseline.py database/ddl/baseline/postgres/0001_merchandise_baseline.sql",
     "db:materialize:contract": "node ../sdkwork-specs/tools/materialize-database-contract-from-baseline.mjs --root . --baseline database/ddl/baseline/postgres/0001_merchandise_baseline.sql --module-id merchandise --owner merchandise-platform --prefixes commerce_ --engines postgres",
     "db:plan": "cargo run --manifest-path ../sdkwork-database/Cargo.toml -p sdkwork-database-cli -- --app-root . plan",
     "db:init": "cargo run --manifest-path ../sdkwork-database/Cargo.toml -p sdkwork-database-cli -- --app-root . init",

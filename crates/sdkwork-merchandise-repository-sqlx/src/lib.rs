@@ -1,5 +1,10 @@
-pub mod postgres_catalog;
-mod single_sku_merchandise;
+//! PostgreSQL persistence for the merchandise catalog.
+//!
+//! One product model only: SPU/SKU master data defined by
+//! `commerce_product_*`, `commerce_price_list*`, and `commerce_currency`.
+//! Inventory quantities, carts, and buyer addresses are owned by other
+//! capabilities and are deliberately absent here.
 
-pub use postgres_catalog::PostgresCommerceCatalogStore;
-pub use single_sku_merchandise::SqlxSingleSkuMerchandiseRepository;
+pub mod postgres_catalog;
+
+pub use postgres_catalog::{unimplemented_operation, PostgresCommerceCatalogStore};

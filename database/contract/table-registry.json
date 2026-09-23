@@ -1,4 +1,6 @@
 {
+  "schemaVersion": 1,
+  "kind": "sdkwork.database.table-registry",
   "tables": [
     {
       "table_name": "commerce_product_spu",
@@ -35,8 +37,72 @@
       "owner": "merchandise-platform",
       "compliance_level": "L2",
       "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_currency",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_category_translation",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_attribute_translation",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_attribute_value_translation",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_category_attribute",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_spu_translation",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_spu_attribute",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_sku_attribute",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_sku_translation",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_media",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_price_list_item",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
     }
-  ],
-  "schemaVersion": 1,
-  "kind": "sdkwork.database.table-registry"
+  ]
 }

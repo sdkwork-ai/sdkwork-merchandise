@@ -1,51 +1,78 @@
 use crate::{commands::*, queries::*};
 use sdkwork_contract_service::CommerceServiceError;
 
-mod single_sku_merchandise;
-
-pub use single_sku_merchandise::*;
-
 pub const CATALOG_REPOSITORY_PORT: &str = "catalog.repository";
-pub const CART_REPOSITORY_PORT: &str = "cart.repository";
-pub const BUYER_ADDRESS_REPOSITORY_PORT: &str = "buyer_address.repository";
 pub const IDEMPOTENCY_REPOSITORY_PORT: &str = "idempotency.repository";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CatalogRepositoryCommand {
     CreateCategory,
+    UpdateCategory,
+    DeleteCategory,
     CreateAttribute,
+    BindCategoryAttribute,
+    UpdateCategoryAttribute,
+    DeleteCategoryAttribute,
     CreateSpu,
+    UpdateSpu,
+    DeleteSpu,
+    PublishSpu,
+    ArchiveSpu,
     CreateSku,
-    AddCartItem,
-    RemoveCartItem,
-    UpsertBuyerAddress,
+    UpdateSku,
+    DeleteSku,
+    CreatePriceList,
+    UpdatePriceList,
 }
 
 pub struct CatalogPortRequirement;
 
 impl CatalogPortRequirement {
+    /// Every write the catalog repository port is required to support.
+    ///
+    /// This list is the port's completeness contract: a host that wires only a
+    /// subset of these commands cannot serve the published route set.
     pub fn standard_commands() -> Vec<CatalogRepositoryCommand> {
         vec![
             CatalogRepositoryCommand::CreateCategory,
+            CatalogRepositoryCommand::UpdateCategory,
+            CatalogRepositoryCommand::DeleteCategory,
             CatalogRepositoryCommand::CreateAttribute,
+            CatalogRepositoryCommand::BindCategoryAttribute,
+            CatalogRepositoryCommand::UpdateCategoryAttribute,
+            CatalogRepositoryCommand::DeleteCategoryAttribute,
             CatalogRepositoryCommand::CreateSpu,
+            CatalogRepositoryCommand::UpdateSpu,
+            CatalogRepositoryCommand::DeleteSpu,
+            CatalogRepositoryCommand::PublishSpu,
+            CatalogRepositoryCommand::ArchiveSpu,
             CatalogRepositoryCommand::CreateSku,
-            CatalogRepositoryCommand::AddCartItem,
-            CatalogRepositoryCommand::RemoveCartItem,
-            CatalogRepositoryCommand::UpsertBuyerAddress,
+            CatalogRepositoryCommand::UpdateSku,
+            CatalogRepositoryCommand::DeleteSku,
+            CatalogRepositoryCommand::CreatePriceList,
+            CatalogRepositoryCommand::UpdatePriceList,
         ]
     }
 }
 
+/// Read model of one `commerce_product_category` row.
+///
+/// Nullable columns are `Option`, non-nullable columns are not: the read model mirrors the schema
+/// rather than guessing, so a caller cannot mistake an absent value for an empty one.
+///
+/// `path` is self-inclusive — `/` for a root, `/1000/` for its child, `/1000/1010/` for a
+/// grandchild — which is what makes a subtree scan a single `path LIKE '/1000/%'` instead of a
+/// recursive walk. `depth` is the number of ancestors, so a root has depth 0.
 #[derive(Clone, Debug)]
 pub struct CategoryRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub organization_id: Option<String>,
+    pub id: i64,
+    pub tenant_id: i64,
+    pub organization_id: i64,
     pub category_no: String,
-    pub parent_id: Option<String>,
+    pub parent_id: Option<i64>,
     pub path: String,
-    pub level_no: i64,
+    pub depth: i64,
+    pub is_leaf: bool,
     pub name: String,
     pub sort_order: i64,
     pub status: String,
@@ -53,15 +80,19 @@ pub struct CategoryRecord {
     pub updated_at: String,
 }
 
+/// Read model of one `commerce_product_attribute` row.
+///
+/// There is no `scope`: the baseline decides what an attribute *means* in a category through
+/// `commerce_product_category_attribute.attribute_role`, because the same attribute is a sales axis
+/// in one category and a plain parameter in another.
 #[derive(Clone, Debug)]
 pub struct AttributeRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub organization_id: Option<String>,
+    pub id: i64,
+    pub tenant_id: i64,
+    pub organization_id: i64,
     pub attribute_no: String,
     pub name: String,
     pub value_type: String,
-    pub scope: String,
     pub status: String,
     pub sort_order: i64,
     pub created_at: String,
@@ -70,60 +101,80 @@ pub struct AttributeRecord {
 
 #[derive(Clone, Debug)]
 pub struct AttributeValueRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub attribute_id: String,
+    pub id: i64,
+    pub tenant_id: i64,
+    pub attribute_id: i64,
     pub value_code: String,
     pub display_value: String,
     pub sort_order: i64,
     pub status: String,
 }
 
+/// Read model of one `commerce_product_spu` row.
+///
+/// There is no `visible_surfaces` column in the baseline: which surface may display a product is a
+/// presentation decision, not product master data.
+///
+/// `sales_status` is derived from `status` by the repository on every write
+/// (`active` if and only if `status = 'active'`), so it is never set independently.
 #[derive(Clone, Debug)]
 pub struct SpuRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub organization_id: Option<String>,
+    pub id: i64,
+    pub tenant_id: i64,
+    pub organization_id: i64,
     pub spu_no: String,
-    pub title: String,
+    pub category_id: i64,
+    pub name: String,
+    pub title: Option<String>,
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub product_type: String,
-    pub category_id: Option<String>,
     pub status: String,
+    pub sales_status: String,
     pub published_at: Option<String>,
-    pub visible_surfaces: String,
     pub created_at: String,
     pub updated_at: String,
 }
 
+/// Read model of one `commerce_product_sku` row.
+///
+/// Money is exposed as exact integer minor units plus the scale snapshotted at write time. There is
+/// deliberately no major-unit string here: a bare `"640.00"` cannot say whether it means 64000 or
+/// 640000, which is the ambiguity `price_scale` exists to remove.
+///
+/// `variant_signature` is the deterministic signature of the SKU's sales-axis combination. Until
+/// sales axes are an API input it falls back to `sku_no`, which still satisfies the
+/// one-live-SKU-per-signature unique index without pretending an axis exists.
 #[derive(Clone, Debug)]
 pub struct SkuRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub organization_id: Option<String>,
-    pub spu_id: String,
+    pub id: i64,
+    pub tenant_id: i64,
+    pub organization_id: i64,
+    pub spu_id: i64,
     pub sku_no: String,
-    pub name: String,
-    pub title: String,
-    pub price_amount: String,
-    pub original_price_amount: Option<String>,
+    pub variant_signature: String,
+    pub name: Option<String>,
+    pub title: Option<String>,
     pub currency_code: String,
+    pub price_scale: i64,
+    pub sale_price_minor: i64,
+    pub list_price_minor: Option<i64>,
     pub fulfillment_type: String,
     pub inventory_tracking: String,
     pub status: String,
+    pub sales_status: String,
     pub published_at: Option<String>,
-    pub spec_json: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct PriceListRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub organization_id: Option<String>,
+    pub id: i64,
+    pub tenant_id: i64,
+    pub organization_id: i64,
     pub price_list_no: String,
+    pub name: String,
     pub currency_code: String,
     pub market_code: Option<String>,
     pub status: String,
@@ -135,53 +186,35 @@ pub struct PriceListRecord {
 
 #[derive(Clone, Debug)]
 pub struct PriceListItemRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub price_list_id: String,
-    pub sku_id: String,
-    pub price_amount: String,
+    pub id: i64,
+    pub tenant_id: i64,
+    pub price_list_id: i64,
+    pub sku_id: i64,
     pub currency_code: String,
+    pub price_scale: i64,
+    pub price_minor: i64,
 }
 
+/// Read model of one `commerce_product_category_attribute` row.
+///
+/// `attribute_role` is the parameter/sales/key split and `source_category_id` records inheritance
+/// from another category, which is why one attribute can be a sales axis here and a specification
+/// there. `comparable` means the attribute's values are meaningfully compared across products
+/// (Magento's `is_comparable`), as opposed to being free text.
 #[derive(Clone, Debug)]
 pub struct CategoryAttributeRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub organization_id: Option<String>,
-    pub category_id: String,
-    pub attribute_id: String,
+    pub id: i64,
+    pub tenant_id: i64,
+    pub organization_id: i64,
+    pub category_id: i64,
+    pub attribute_id: i64,
+    pub attribute_role: String,
+    pub source_category_id: Option<i64>,
     pub required: bool,
     pub searchable: bool,
     pub filterable: bool,
+    pub comparable: bool,
     pub sort_order: i64,
-    pub status: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct CartItemRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub owner_user_id: String,
-    pub sku_id: String,
-    pub quantity: i64,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct AddressRecord {
-    pub id: String,
-    pub tenant_id: String,
-    pub owner_user_id: String,
-    pub receiver_name: String,
-    pub receiver_phone: String,
-    pub country_code: String,
-    pub province: String,
-    pub city: String,
-    pub detail_address: String,
-    pub is_default: bool,
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
@@ -297,44 +330,4 @@ pub trait CatalogRepositoryPort: Send + Sync {
     ) -> Result<SkuRecord, CommerceServiceError>;
 
     fn delete_sku(&self, command: &DeleteProductSkuCommand) -> Result<(), CommerceServiceError>;
-
-    fn list_cart_items(
-        &self,
-        query: &CartRetrieveQuery,
-    ) -> Result<Vec<CartItemRecord>, CommerceServiceError>;
-
-    fn add_cart_item(
-        &self,
-        command: &AddCartItemCommand,
-    ) -> Result<CartItemRecord, CommerceServiceError>;
-
-    fn update_cart_item(
-        &self,
-        command: &UpdateCartItemCommand,
-    ) -> Result<CartItemRecord, CommerceServiceError>;
-
-    fn remove_cart_item(&self, command: &RemoveCartItemCommand)
-        -> Result<(), CommerceServiceError>;
-
-    fn list_addresses(
-        &self,
-        query: &AddressListQuery,
-    ) -> Result<Vec<AddressRecord>, CommerceServiceError>;
-
-    fn create_address(
-        &self,
-        command: &CreateAddressCommand,
-    ) -> Result<AddressRecord, CommerceServiceError>;
-
-    fn update_address(
-        &self,
-        command: &UpdateAddressCommand,
-    ) -> Result<AddressRecord, CommerceServiceError>;
-
-    fn delete_address(&self, command: &DeleteAddressCommand) -> Result<(), CommerceServiceError>;
-
-    fn set_default_address(
-        &self,
-        command: &SetDefaultAddressCommand,
-    ) -> Result<AddressRecord, CommerceServiceError>;
 }

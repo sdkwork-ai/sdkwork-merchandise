@@ -25,24 +25,47 @@ pub struct AttributeListQuery {
     pub page_size: Option<i64>,
 }
 
+/// Lists price lists.
+///
+/// `currency_code` and `market_code` exist because a price list is only meaningful inside one
+/// currency and (optionally) one market, so both are filters rather than free text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PriceListListQuery {
     pub tenant_id: String,
     pub organization_id: Option<String>,
+    pub currency_code: Option<String>,
+    pub market_code: Option<String>,
     pub status: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
 }
 
+/// Lists category attribute bindings.
+///
+/// Every filter is optional and each one narrows the template: `category_id` picks a category's
+/// template, `attribute_id` asks where one attribute is used, and `status` separates the live
+/// template from bindings retired without losing their history.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CategoryAttributeListQuery {
     pub tenant_id: String,
     pub organization_id: Option<String>,
     pub category_id: Option<String>,
+    pub attribute_id: Option<String>,
+    pub status: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
 }
 
+/// Lists product SPUs.
+///
+/// `q` is free-text search. It is matched against the SPU's own identifier and its titles, because
+/// those are the fields an operator types when looking for a product; it never reaches SQL as
+/// text — the statement binds it as a parameter and builds the `ILIKE` pattern inside the driver.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductSpuListQuery {
     pub tenant_id: String,
     pub organization_id: Option<String>,
+    pub q: Option<String>,
     pub category_id: Option<String>,
     pub product_type: Option<String>,
     pub status: Option<String>,
@@ -77,22 +100,6 @@ pub struct ProductSkuRetrieveQuery {
 pub struct SkuPriceRetrieveQuery {
     pub tenant_id: String,
     pub sku_id: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CartRetrieveQuery {
-    pub tenant_id: String,
-    pub owner_user_id: String,
-    pub page: Option<i64>,
-    pub page_size: Option<i64>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AddressListQuery {
-    pub tenant_id: String,
-    pub owner_user_id: String,
-    pub page: Option<i64>,
-    pub page_size: Option<i64>,
 }
 
 macro_rules! impl_query_new {
@@ -146,15 +153,13 @@ macro_rules! impl_query_new {
 impl_query_new!(CategoryListQuery, required: [tenant_id], optional: [organization_id, parent_id, status], page: [page, page_size]);
 impl_query_new!(CategoryRetrieveQuery, required: [tenant_id, category_id], optional: []);
 impl_query_new!(AttributeListQuery, required: [tenant_id], optional: [organization_id, status], page: [page, page_size]);
-impl_query_new!(PriceListListQuery, required: [tenant_id], optional: [organization_id, status]);
-impl_query_new!(CategoryAttributeListQuery, required: [tenant_id], optional: [organization_id, category_id]);
-impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, category_id, product_type, status, sort], page: [page, page_size]);
+impl_query_new!(PriceListListQuery, required: [tenant_id], optional: [organization_id, currency_code, market_code, status], page: [page, page_size]);
+impl_query_new!(CategoryAttributeListQuery, required: [tenant_id], optional: [organization_id, category_id, attribute_id, status], page: [page, page_size]);
+impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, q, category_id, product_type, status, sort], page: [page, page_size]);
 impl_query_new!(ProductSpuRetrieveQuery, required: [tenant_id, spu_id], optional: []);
 impl_query_new!(ProductSkuListQuery, required: [tenant_id], optional: [organization_id, spu_id, status], page: [page, page_size]);
 impl_query_new!(ProductSkuRetrieveQuery, required: [tenant_id, sku_id], optional: []);
 impl_query_new!(SkuPriceRetrieveQuery, required: [tenant_id, sku_id], optional: []);
-impl_query_new!(CartRetrieveQuery, required: [tenant_id, owner_user_id], optional: [], page: [page, page_size]);
-impl_query_new!(AddressListQuery, required: [tenant_id, owner_user_id], optional: [], page: [page, page_size]);
 
 fn required_text(field_name: &str, value: &str) -> Result<String, CommerceServiceError> {
     crate::validation::require_non_empty(field_name, value)?;

@@ -132,6 +132,28 @@ fn problem_for(kind: WebFrameworkErrorKind, message: impl Into<String>) -> Respo
     )
 }
 
+pub fn unauthorized_response(message: impl Into<String>) -> Response {
+    problem_for(WebFrameworkErrorKind::MissingCredentials, message)
+}
+
+pub fn validation_response(message: impl Into<String>) -> Response {
+    problem_for(WebFrameworkErrorKind::BadRequest, message)
+}
+
+pub fn not_found_response(message: impl Into<String>) -> Response {
+    problem_for(WebFrameworkErrorKind::NotFound, message)
+}
+
+pub fn catalog_system_response(
+    context: &str,
+    error: sdkwork_contract_service::CommerceServiceError,
+) -> Response {
+    problem_for(
+        WebFrameworkErrorKind::DependencyUnavailable,
+        format!("{context}: {}", error.message()),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::offset_page_info;
@@ -153,26 +175,4 @@ mod tests {
         assert_eq!(value["totalPages"], 0);
         assert_eq!(value["hasMore"], false);
     }
-}
-
-pub fn unauthorized_response(message: impl Into<String>) -> Response {
-    problem_for(WebFrameworkErrorKind::MissingCredentials, message)
-}
-
-pub fn validation_response(message: impl Into<String>) -> Response {
-    problem_for(WebFrameworkErrorKind::BadRequest, message)
-}
-
-pub fn not_found_response(message: impl Into<String>) -> Response {
-    problem_for(WebFrameworkErrorKind::NotFound, message)
-}
-
-pub fn catalog_system_response(
-    context: &str,
-    error: sdkwork_contract_service::CommerceServiceError,
-) -> Response {
-    problem_for(
-        WebFrameworkErrorKind::DependencyUnavailable,
-        format!("{context}: {}", error.message()),
-    )
 }

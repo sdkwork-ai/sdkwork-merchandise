@@ -13,7 +13,11 @@ const contractPath = path.join(
   'merchandise',
   'shop-backend-api.merchandise.openapi.json',
 );
-const current = readFileSync(contractPath, 'utf8');
+// The generated document is LF, while a Windows working tree checks the same
+// file out as CRLF (this repository carries no `.gitattributes`). Normalising
+// before comparing keeps this gate a content check instead of a line-ending
+// check, which would otherwise fail unconditionally on Windows.
+const current = readFileSync(contractPath, 'utf8').replace(/\r\n/g, '\n');
 const document = JSON.parse(current);
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
 let operationCount = 0;

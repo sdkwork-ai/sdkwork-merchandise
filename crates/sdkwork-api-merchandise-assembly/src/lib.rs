@@ -8,7 +8,8 @@ mod bootstrap;
 mod generated;
 
 pub use bootstrap::{
-    assemble_api_router, web_module_with_context, ApiAssembly, ApiAssemblyContext,
+    assemble_api_router, assemble_backend_api_contribution, web_module_with_context, ApiAssembly,
+    ApiAssemblyContext,
 };
 
 pub async fn assemble_api_router_from_env() -> Result<ApiAssembly, String> {
@@ -19,6 +20,44 @@ pub async fn assemble_api_router_from_env() -> Result<ApiAssembly, String> {
         sdkwork_web_bootstrap::DatabasePoolReadinessCheck::new(host.database_pool().clone()),
     );
     assemble_api_router(ApiAssemblyContext {
+        host,
+        domain_context_injectors: Vec::new(),
+        readiness_check,
+    })
+    .await
+}
+
+/// Builds the backend-api-only contribution against the host process pool.
+///
+/// The Shop assembly mounts this contribution in its own origin and generates
+/// the combined owner-only backend SDK, so the backend-api surface must be
+/// obtainable independently of the full-surface contribution above.
+pub async fn assemble_backend_api_contribution_from_env() -> Result<ApiAssembly, String> {
+    let host = std::sync::Arc::new(
+        sdkwork_merchandise_service_host::MerchandiseServiceHost::from_env().await?,
+    );
+    let readiness_check = std::sync::Arc::new(
+        sdkwork_web_bootstrap::DatabasePoolReadinessCheck::new(host.database_pool().clone()),
+    );
+    assemble_backend_api_contribution(ApiAssemblyContext {
+        host,
+        domain_context_injectors: Vec::new(),
+        readiness_check,
+    })
+    .await
+}
+
+/// Builds the backend-api-only contribution against a caller-supplied pool.
+pub async fn assemble_backend_api_contribution_with_pool(
+    pool: sdkwork_database_sqlx::DatabasePool,
+) -> Result<ApiAssembly, String> {
+    let host = std::sync::Arc::new(
+        sdkwork_merchandise_service_host::MerchandiseServiceHost::from_pool(pool).await?,
+    );
+    let readiness_check = std::sync::Arc::new(
+        sdkwork_web_bootstrap::DatabasePoolReadinessCheck::new(host.database_pool().clone()),
+    );
+    assemble_backend_api_contribution(ApiAssemblyContext {
         host,
         domain_context_injectors: Vec::new(),
         readiness_check,

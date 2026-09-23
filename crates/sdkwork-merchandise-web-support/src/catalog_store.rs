@@ -1,4 +1,15 @@
 //! Shared merchandise store port, HTTP DTOs, and response mappers.
+//!
+//! # Wire contract
+//!
+//! Every `BIGINT` column is serialized as a **decimal string** (`API_SPEC` section 13.6). A browser
+//! silently rounds an int64 sent as a JSON number past `Number.MAX_SAFE_INTEGER` (2^53), and the
+//! rounded id is then replayed into a lookup that returns the wrong row — or none. `SMALLINT` columns
+//! (`depth`, `price_scale`) stay numbers because they cannot exceed the safe range.
+//!
+//! Money is exposed as exact integer minor units plus the scale snapshotted on the row. There is no
+//! major-unit amount on the wire: a bare `"640.00"` cannot say whether it means 64000 or 640000, and
+//! the currency's exponent lives in `commerce_currency` rather than in the caller's head.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -7,18 +18,16 @@ use std::sync::Arc;
 use sdkwork_contract_service::CommerceServiceError;
 use sdkwork_merchandise_repository_sqlx::PostgresCommerceCatalogStore;
 use sdkwork_merchandise_service::{
-    AddCartItemCommand, AddressListQuery, AddressRecord, ArchiveSpuCommand, AttributeListQuery,
-    AttributeRecord, CartItemRecord, CartRetrieveQuery, CategoryAttributeListQuery,
+    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, CategoryAttributeListQuery,
     CategoryAttributeRecord, CategoryListQuery, CategoryRecord, CategoryRetrieveQuery,
-    CreateAddressCommand, CreateAttributeCommand, CreateCategoryAttributeCommand,
-    CreateCategoryCommand, CreatePriceListCommand, CreateProductSkuCommand,
-    CreateProductSpuCommand, DeleteAddressCommand, DeleteCategoryAttributeCommand,
-    DeleteCategoryCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, PriceListItemRecord,
-    PriceListListQuery, PriceListRecord, ProductSkuListQuery, ProductSkuRetrieveQuery,
-    ProductSpuListQuery, ProductSpuRetrieveQuery, PublishSpuCommand, RemoveCartItemCommand,
-    SetDefaultAddressCommand, SkuPriceRetrieveQuery, SkuRecord, SpuRecord, UpdateAddressCommand,
-    UpdateCartItemCommand, UpdateCategoryAttributeCommand, UpdateCategoryCommand,
-    UpdatePriceListCommand, UpdateProductSkuCommand, UpdateProductSpuCommand,
+    CreateAttributeCommand, CreateCategoryAttributeCommand, CreateCategoryCommand,
+    CreatePriceListCommand, CreateProductSkuCommand, CreateProductSpuCommand,
+    DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteProductSkuCommand,
+    DeleteProductSpuCommand, PriceListItemRecord, PriceListListQuery, PriceListRecord,
+    ProductSkuListQuery, ProductSkuRetrieveQuery, ProductSpuListQuery, ProductSpuRetrieveQuery,
+    PublishSpuCommand, SkuPriceRetrieveQuery, SkuRecord, SpuRecord, UpdateCategoryAttributeCommand,
+    UpdateCategoryCommand, UpdatePriceListCommand, UpdateProductSkuCommand,
+    UpdateProductSpuCommand,
 };
 use serde::{Deserialize, Serialize};
 
@@ -101,6 +110,11 @@ pub trait CommerceCatalogStore: Send + Sync {
         query: PriceListListQuery,
     ) -> CommerceCatalogFuture<'a, Vec<PriceListRecord>>;
 
+    fn list_price_lists_page<'a>(
+        &'a self,
+        query: PriceListListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<PriceListRecord>>;
+
     fn create_price_list<'a>(
         &'a self,
         command: CreatePriceListCommand,
@@ -115,6 +129,11 @@ pub trait CommerceCatalogStore: Send + Sync {
         &'a self,
         query: CategoryAttributeListQuery,
     ) -> CommerceCatalogFuture<'a, Vec<CategoryAttributeRecord>>;
+
+    fn list_category_attributes_page<'a>(
+        &'a self,
+        query: CategoryAttributeListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<CategoryAttributeRecord>>;
 
     fn create_category_attribute<'a>(
         &'a self,
@@ -199,59 +218,6 @@ pub trait CommerceCatalogStore: Send + Sync {
     ) -> CommerceCatalogFuture<'a, SkuRecord>;
 
     fn delete_sku<'a>(&'a self, command: DeleteProductSkuCommand) -> CommerceCatalogFuture<'a, ()>;
-
-    fn list_cart_items<'a>(
-        &'a self,
-        query: CartRetrieveQuery,
-    ) -> CommerceCatalogFuture<'a, Vec<CartItemRecord>>;
-
-    fn list_cart_items_page<'a>(
-        &'a self,
-        query: CartRetrieveQuery,
-    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<CartItemRecord>>;
-
-    fn add_cart_item<'a>(
-        &'a self,
-        command: AddCartItemCommand,
-    ) -> CommerceCatalogFuture<'a, CartItemRecord>;
-
-    fn update_cart_item<'a>(
-        &'a self,
-        command: UpdateCartItemCommand,
-    ) -> CommerceCatalogFuture<'a, CartItemRecord>;
-
-    fn remove_cart_item<'a>(
-        &'a self,
-        command: RemoveCartItemCommand,
-    ) -> CommerceCatalogFuture<'a, ()>;
-
-    fn list_addresses<'a>(
-        &'a self,
-        query: AddressListQuery,
-    ) -> CommerceCatalogFuture<'a, Vec<AddressRecord>>;
-
-    fn list_addresses_page<'a>(
-        &'a self,
-        query: AddressListQuery,
-    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AddressRecord>>;
-
-    fn create_address<'a>(
-        &'a self,
-        command: CreateAddressCommand,
-    ) -> CommerceCatalogFuture<'a, AddressRecord>;
-
-    fn update_address<'a>(
-        &'a self,
-        command: UpdateAddressCommand,
-    ) -> CommerceCatalogFuture<'a, AddressRecord>;
-
-    fn delete_address<'a>(&'a self, command: DeleteAddressCommand)
-        -> CommerceCatalogFuture<'a, ()>;
-
-    fn set_default_address<'a>(
-        &'a self,
-        command: SetDefaultAddressCommand,
-    ) -> CommerceCatalogFuture<'a, AddressRecord>;
 }
 
 #[derive(Clone)]
@@ -259,18 +225,27 @@ pub struct CatalogState {
     pub store: Arc<dyn CommerceCatalogStore>,
 }
 
+/// Query parameters for the category collection.
+///
+/// There is deliberately no `organization_id` here. Organization scope is carried by the
+/// authenticated runtime context (`IamAppContext`), never by a caller-supplied query parameter: a
+/// list endpoint that lets the caller choose the organization is a scope-confusion hazard, and the
+/// create endpoints already refuse to run without a context organization. The OpenAPI for
+/// `/backend/v3/api/catalog/categories` declares no such parameter either.
 #[derive(Debug, Deserialize)]
 pub struct CategoryQueryParams {
-    pub organization_id: Option<String>,
     pub parent_id: Option<String>,
     pub status: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }
 
+/// Query parameters for the attribute dictionary collection.
+///
+/// `scope` was removed from the model (`commerce_product_attribute` has no scope column), so it is
+/// no longer accepted here nor declared in the OpenAPI.
 #[derive(Debug, Deserialize)]
 pub struct AttributeQueryParams {
-    pub organization_id: Option<String>,
     pub status: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
@@ -278,30 +253,46 @@ pub struct AttributeQueryParams {
 
 #[derive(Debug, Deserialize)]
 struct PriceListQueryParams {
-    organization_id: Option<String>,
+    currency_code: Option<String>,
+    market_code: Option<String>,
     status: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 struct CategoryAttributeQueryParams {
-    organization_id: Option<String>,
     category_id: Option<String>,
+    attribute_id: Option<String>,
+    status: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
 }
 
+/// Query parameters for the product collection.
+///
+/// `q` is free-text search across the product's own identifier and titles. There is no `cursor`
+/// here: this collection paginates by offset, and the retired `/catalog/spus` collection was its
+/// only cursor user.
 #[derive(Debug, Deserialize)]
-pub struct SpuListQueryParams {
-    pub organization_id: Option<String>,
+pub struct ProductListQueryParams {
+    pub q: Option<String>,
     pub category_id: Option<String>,
     pub product_type: Option<String>,
     pub status: Option<String>,
+    pub sort: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }
 
+/// Query parameters for the SKU collection.
+///
+/// The parent filter is `product_id`, matching the OpenAPI parameter name and the rest of the
+/// product-facing vocabulary (`/backend/v3/api/catalog/products/{productId}`). Internally it selects
+/// `commerce_product_sku.spu_id`.
 #[derive(Debug, Deserialize)]
 struct SkuListQueryParams {
-    organization_id: Option<String>,
-    spu_id: Option<String>,
+    product_id: Option<String>,
     status: Option<String>,
     page: Option<i64>,
     page_size: Option<i64>,
@@ -349,26 +340,41 @@ struct UpdatePriceListBody {
     ends_at: Option<String>,
 }
 
+/// Create-body for one category attribute binding.
+///
+/// `role` defaults to `parameter` when omitted: a binding that has not been classified is
+/// descriptive metadata, which is the only role that never changes how an SKU splits. A caller that
+/// omits it therefore cannot accidentally declare a sales axis.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateCategoryAttributeBody {
     category_id: String,
     attribute_id: String,
+    role: Option<String>,
     required: Option<bool>,
     searchable: Option<bool>,
     filterable: Option<bool>,
+    comparable: Option<bool>,
+    source_category_id: Option<String>,
     sort_order: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateCategoryAttributeBody {
+    role: Option<String>,
     required: Option<bool>,
     searchable: Option<bool>,
     filterable: Option<bool>,
+    comparable: Option<bool>,
     sort_order: Option<i64>,
+    status: Option<String>,
 }
 
+/// Create-SPU body.
+///
+/// `category_id` is required: `commerce_product_spu.category_id` is `NOT NULL`, so omitting it is a
+/// malformed request rather than a product without a home.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSpuBody {
@@ -377,8 +383,7 @@ pub struct CreateSpuBody {
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub product_type: String,
-    pub category_id: Option<String>,
-    pub visible_surfaces: Option<String>,
+    pub category_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -388,9 +393,12 @@ pub struct UpdateSpuBody {
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub category_id: Option<String>,
-    pub visible_surfaces: Option<String>,
 }
 
+/// Create-SKU body.
+///
+/// `price_amount` and `original_price_amount` are major-denomination decimals; the repository resolves
+/// the currency's scale and stores exact minor units.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateSkuBody {
@@ -418,50 +426,19 @@ struct UpdateSkuBody {
     status: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AddCartItemBody {
-    pub sku_id: String,
-    pub quantity: u32,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateCartItemBody {
-    pub quantity: u32,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateAddressBody {
-    pub receiver_name: String,
-    pub receiver_phone: String,
-    pub country_code: String,
-    pub province: String,
-    pub city: String,
-    pub detail_address: String,
-    pub is_default: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateAddressBody {
-    pub receiver_name: Option<String>,
-    pub receiver_phone: Option<String>,
-    pub province: Option<String>,
-    pub city: Option<String>,
-    pub detail_address: Option<String>,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryResponse {
-    id: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
     category_no: String,
-    parent_id: Option<String>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    parent_id: Option<i64>,
     path: String,
-    level_no: i64,
+    depth: i64,
+    is_leaf: bool,
     name: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
     sort_order: i64,
     status: String,
     created_at: String,
@@ -471,12 +448,13 @@ pub struct CategoryResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttributeResponse {
-    id: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
     attribute_no: String,
     name: String,
     value_type: String,
-    scope: String,
     status: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
     sort_order: i64,
     created_at: String,
     updated_at: String,
@@ -485,16 +463,19 @@ pub struct AttributeResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpuResponse {
-    id: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
     spu_no: String,
-    title: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    category_id: i64,
+    name: String,
+    title: Option<String>,
     subtitle: Option<String>,
     description: Option<String>,
     product_type: String,
-    category_id: Option<String>,
     status: String,
+    sales_status: String,
     published_at: Option<String>,
-    visible_surfaces: String,
     created_at: String,
     updated_at: String,
 }
@@ -502,19 +483,25 @@ pub struct SpuResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkuResponse {
-    id: String,
-    spu_id: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    spu_id: i64,
     sku_no: String,
-    name: String,
-    title: String,
-    price_amount: String,
-    original_price_amount: Option<String>,
+    variant_signature: String,
+    name: Option<String>,
+    title: Option<String>,
     currency_code: String,
+    price_scale: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    sale_price_minor: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    list_price_minor: Option<i64>,
     fulfillment_type: String,
     inventory_tracking: String,
     status: String,
+    sales_status: String,
     published_at: Option<String>,
-    spec_json: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -522,10 +509,14 @@ pub struct SkuResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceListResponse {
-    id: String,
-    tenant_id: String,
-    organization_id: Option<String>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    tenant_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    organization_id: i64,
     price_list_no: String,
+    name: String,
     currency_code: String,
     market_code: Option<String>,
     status: String,
@@ -538,52 +529,42 @@ pub struct PriceListResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceListItemResponse {
-    id: String,
-    tenant_id: String,
-    price_list_id: String,
-    sku_id: String,
-    price_amount: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    tenant_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    price_list_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    sku_id: i64,
     currency_code: String,
+    price_scale: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    price_minor: i64,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryAttributeResponse {
-    id: String,
-    tenant_id: String,
-    organization_id: Option<String>,
-    category_id: String,
-    attribute_id: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    tenant_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    organization_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    category_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    attribute_id: i64,
+    attribute_role: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    source_category_id: Option<i64>,
     required: bool,
     searchable: bool,
     filterable: bool,
+    comparable: bool,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
     sort_order: i64,
-    status: String,
-    created_at: String,
-    updated_at: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CartItemResponse {
-    id: String,
-    sku_id: String,
-    quantity: i64,
-    created_at: String,
-    updated_at: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AddressResponse {
-    id: String,
-    receiver_name: String,
-    receiver_phone: String,
-    country_code: String,
-    province: String,
-    city: String,
-    detail_address: String,
-    is_default: bool,
     status: String,
     created_at: String,
     updated_at: String,
@@ -678,6 +659,22 @@ impl CommerceCatalogStore for PostgresCommerceCatalogStore {
         Box::pin(async move { self.list_price_lists(&query).await })
     }
 
+    fn list_price_lists_page<'a>(
+        &'a self,
+        query: PriceListListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<PriceListRecord>> {
+        Box::pin(async move {
+            let items = self.list_price_lists(&query).await?;
+            let total_items = self.count_price_lists(&query).await?;
+            Ok(CatalogOffsetPage::new(
+                items,
+                query.page,
+                query.page_size,
+                total_items,
+            ))
+        })
+    }
+
     fn create_price_list<'a>(
         &'a self,
         command: CreatePriceListCommand,
@@ -694,46 +691,46 @@ impl CommerceCatalogStore for PostgresCommerceCatalogStore {
 
     fn list_category_attributes<'a>(
         &'a self,
-        _query: CategoryAttributeListQuery,
+        query: CategoryAttributeListQuery,
     ) -> CommerceCatalogFuture<'a, Vec<CategoryAttributeRecord>> {
+        Box::pin(async move { self.list_category_attributes(&query).await })
+    }
+
+    fn list_category_attributes_page<'a>(
+        &'a self,
+        query: CategoryAttributeListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<CategoryAttributeRecord>> {
         Box::pin(async move {
-            Err(CommerceServiceError::storage(
-                "category attribute listing is not yet implemented for postgres",
+            let items = self.list_category_attributes(&query).await?;
+            let total_items = self.count_category_attributes(&query).await?;
+            Ok(CatalogOffsetPage::new(
+                items,
+                query.page,
+                query.page_size,
+                total_items,
             ))
         })
     }
 
     fn create_category_attribute<'a>(
         &'a self,
-        _command: CreateCategoryAttributeCommand,
+        command: CreateCategoryAttributeCommand,
     ) -> CommerceCatalogFuture<'a, CategoryAttributeRecord> {
-        Box::pin(async move {
-            Err(CommerceServiceError::storage(
-                "category attribute creation is not yet implemented for postgres",
-            ))
-        })
+        Box::pin(async move { self.create_category_attribute(&command).await })
     }
 
     fn update_category_attribute<'a>(
         &'a self,
-        _command: UpdateCategoryAttributeCommand,
+        command: UpdateCategoryAttributeCommand,
     ) -> CommerceCatalogFuture<'a, CategoryAttributeRecord> {
-        Box::pin(async move {
-            Err(CommerceServiceError::storage(
-                "category attribute update is not yet implemented for postgres",
-            ))
-        })
+        Box::pin(async move { self.update_category_attribute(&command).await })
     }
 
     fn delete_category_attribute<'a>(
         &'a self,
-        _command: DeleteCategoryAttributeCommand,
+        command: DeleteCategoryAttributeCommand,
     ) -> CommerceCatalogFuture<'a, ()> {
-        Box::pin(async move {
-            Err(CommerceServiceError::storage(
-                "category attribute deletion is not yet implemented for postgres",
-            ))
-        })
+        Box::pin(async move { self.delete_category_attribute(&command).await })
     }
 
     fn list_spus<'a>(
@@ -830,13 +827,9 @@ impl CommerceCatalogStore for PostgresCommerceCatalogStore {
 
     fn retrieve_sku_prices<'a>(
         &'a self,
-        _query: SkuPriceRetrieveQuery,
+        query: SkuPriceRetrieveQuery,
     ) -> CommerceCatalogFuture<'a, Vec<PriceListItemRecord>> {
-        Box::pin(async move {
-            Err(CommerceServiceError::storage(
-                "sku price retrieval is not yet implemented for postgres",
-            ))
-        })
+        Box::pin(async move { self.retrieve_sku_prices(&query).await })
     }
 
     fn create_sku<'a>(
@@ -856,101 +849,6 @@ impl CommerceCatalogStore for PostgresCommerceCatalogStore {
     fn delete_sku<'a>(&'a self, command: DeleteProductSkuCommand) -> CommerceCatalogFuture<'a, ()> {
         Box::pin(async move { self.delete_sku(&command).await })
     }
-
-    fn list_cart_items<'a>(
-        &'a self,
-        query: CartRetrieveQuery,
-    ) -> CommerceCatalogFuture<'a, Vec<CartItemRecord>> {
-        Box::pin(async move { self.list_cart_items(&query).await })
-    }
-
-    fn list_cart_items_page<'a>(
-        &'a self,
-        query: CartRetrieveQuery,
-    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<CartItemRecord>> {
-        Box::pin(async move {
-            let items = self.list_cart_items(&query).await?;
-            let total_items = self.count_cart_items(&query).await?;
-            Ok(CatalogOffsetPage::new(
-                items,
-                query.page,
-                query.page_size,
-                total_items,
-            ))
-        })
-    }
-
-    fn add_cart_item<'a>(
-        &'a self,
-        command: AddCartItemCommand,
-    ) -> CommerceCatalogFuture<'a, CartItemRecord> {
-        Box::pin(async move { self.add_cart_item(&command).await })
-    }
-
-    fn update_cart_item<'a>(
-        &'a self,
-        command: UpdateCartItemCommand,
-    ) -> CommerceCatalogFuture<'a, CartItemRecord> {
-        Box::pin(async move { self.update_cart_item(&command).await })
-    }
-
-    fn remove_cart_item<'a>(
-        &'a self,
-        command: RemoveCartItemCommand,
-    ) -> CommerceCatalogFuture<'a, ()> {
-        Box::pin(async move { self.remove_cart_item(&command).await })
-    }
-
-    fn list_addresses<'a>(
-        &'a self,
-        query: AddressListQuery,
-    ) -> CommerceCatalogFuture<'a, Vec<AddressRecord>> {
-        Box::pin(async move { self.list_addresses(&query).await })
-    }
-
-    fn list_addresses_page<'a>(
-        &'a self,
-        query: AddressListQuery,
-    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AddressRecord>> {
-        Box::pin(async move {
-            let items = self.list_addresses(&query).await?;
-            let total_items = self.count_addresses(&query).await?;
-            Ok(CatalogOffsetPage::new(
-                items,
-                query.page,
-                query.page_size,
-                total_items,
-            ))
-        })
-    }
-
-    fn create_address<'a>(
-        &'a self,
-        command: CreateAddressCommand,
-    ) -> CommerceCatalogFuture<'a, AddressRecord> {
-        Box::pin(async move { self.create_address(&command).await })
-    }
-
-    fn update_address<'a>(
-        &'a self,
-        command: UpdateAddressCommand,
-    ) -> CommerceCatalogFuture<'a, AddressRecord> {
-        Box::pin(async move { self.update_address(&command).await })
-    }
-
-    fn delete_address<'a>(
-        &'a self,
-        command: DeleteAddressCommand,
-    ) -> CommerceCatalogFuture<'a, ()> {
-        Box::pin(async move { self.delete_address(&command).await })
-    }
-
-    fn set_default_address<'a>(
-        &'a self,
-        command: SetDefaultAddressCommand,
-    ) -> CommerceCatalogFuture<'a, AddressRecord> {
-        Box::pin(async move { self.set_default_address(&command).await })
-    }
 }
 
 pub fn map_category(value: CategoryRecord) -> CategoryResponse {
@@ -959,7 +857,8 @@ pub fn map_category(value: CategoryRecord) -> CategoryResponse {
         category_no: value.category_no,
         parent_id: value.parent_id,
         path: value.path,
-        level_no: value.level_no,
+        depth: value.depth,
+        is_leaf: value.is_leaf,
         name: value.name,
         sort_order: value.sort_order,
         status: value.status,
@@ -974,7 +873,6 @@ pub fn map_attribute(value: AttributeRecord) -> AttributeResponse {
         attribute_no: value.attribute_no,
         name: value.name,
         value_type: value.value_type,
-        scope: value.scope,
         status: value.status,
         sort_order: value.sort_order,
         created_at: value.created_at,
@@ -986,14 +884,15 @@ pub fn map_spu(value: SpuRecord) -> SpuResponse {
     SpuResponse {
         id: value.id,
         spu_no: value.spu_no,
+        category_id: value.category_id,
+        name: value.name,
         title: value.title,
         subtitle: value.subtitle,
         description: value.description,
         product_type: value.product_type,
-        category_id: value.category_id,
         status: value.status,
+        sales_status: value.sales_status,
         published_at: value.published_at,
-        visible_surfaces: value.visible_surfaces,
         created_at: value.created_at,
         updated_at: value.updated_at,
     }
@@ -1004,16 +903,18 @@ pub fn map_sku(value: SkuRecord) -> SkuResponse {
         id: value.id,
         spu_id: value.spu_id,
         sku_no: value.sku_no,
+        variant_signature: value.variant_signature,
         name: value.name,
         title: value.title,
-        price_amount: value.price_amount,
-        original_price_amount: value.original_price_amount,
         currency_code: value.currency_code,
+        price_scale: value.price_scale,
+        sale_price_minor: value.sale_price_minor,
+        list_price_minor: value.list_price_minor,
         fulfillment_type: value.fulfillment_type,
         inventory_tracking: value.inventory_tracking,
         status: value.status,
+        sales_status: value.sales_status,
         published_at: value.published_at,
-        spec_json: value.spec_json,
         created_at: value.created_at,
         updated_at: value.updated_at,
     }
@@ -1025,6 +926,7 @@ fn map_price_list(value: PriceListRecord) -> PriceListResponse {
         tenant_id: value.tenant_id,
         organization_id: value.organization_id,
         price_list_no: value.price_list_no,
+        name: value.name,
         currency_code: value.currency_code,
         market_code: value.market_code,
         status: value.status,
@@ -1041,8 +943,9 @@ pub fn map_price_list_item(value: PriceListItemRecord) -> PriceListItemResponse 
         tenant_id: value.tenant_id,
         price_list_id: value.price_list_id,
         sku_id: value.sku_id,
-        price_amount: value.price_amount,
         currency_code: value.currency_code,
+        price_scale: value.price_scale,
+        price_minor: value.price_minor,
     }
 }
 
@@ -1053,36 +956,13 @@ fn map_category_attribute(value: CategoryAttributeRecord) -> CategoryAttributeRe
         organization_id: value.organization_id,
         category_id: value.category_id,
         attribute_id: value.attribute_id,
+        attribute_role: value.attribute_role,
+        source_category_id: value.source_category_id,
         required: value.required,
         searchable: value.searchable,
         filterable: value.filterable,
+        comparable: value.comparable,
         sort_order: value.sort_order,
-        status: value.status,
-        created_at: value.created_at,
-        updated_at: value.updated_at,
-    }
-}
-
-pub fn map_cart_item(value: CartItemRecord) -> CartItemResponse {
-    CartItemResponse {
-        id: value.id,
-        sku_id: value.sku_id,
-        quantity: value.quantity,
-        created_at: value.created_at,
-        updated_at: value.updated_at,
-    }
-}
-
-pub fn map_address(value: AddressRecord) -> AddressResponse {
-    AddressResponse {
-        id: value.id,
-        receiver_name: value.receiver_name,
-        receiver_phone: value.receiver_phone,
-        country_code: value.country_code,
-        province: value.province,
-        city: value.city,
-        detail_address: value.detail_address,
-        is_default: value.is_default,
         status: value.status,
         created_at: value.created_at,
         updated_at: value.updated_at,

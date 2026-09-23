@@ -27,3 +27,36 @@ tables:
   - name: commerce_price_list
     lifecycle_status: active
     owner: merchandise-platform
+  - name: commerce_currency
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_category_translation
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_attribute_translation
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_attribute_value_translation
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_category_attribute
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_spu_translation
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_spu_attribute
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_sku_attribute
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_sku_translation
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_product_media
+    lifecycle_status: active
+    owner: merchandise-platform
+  - name: commerce_price_list_item
+    lifecycle_status: active
+    owner: merchandise-platform

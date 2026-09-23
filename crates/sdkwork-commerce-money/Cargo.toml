@@ -1,0 +1,17 @@
+[package]
+name = "sdkwork-commerce-money"
+description = "Multi-precision commerce money: ISO 4217 scale-aware amounts, exact arithmetic, allocation, and rate application"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "sdkwork_commerce_money"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]

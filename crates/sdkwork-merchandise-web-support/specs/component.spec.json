@@ -68,7 +68,6 @@
     "requiredPorts": [],
     "runtimeEntrypoints": [
       "backend_catalog_router_with_postgres_pool",
-      "backend_catalog_router_with_sqlite_pool",
       "build_backend_catalog_router"
     ],
     "routeManifest": null,

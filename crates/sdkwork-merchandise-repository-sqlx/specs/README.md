@@ -18,12 +18,11 @@ global SDKWork standards remain authoritative.
 
 ## Public Contract
 
-- Repository adapter: `SqlxSingleSkuMerchandiseRepository`.
-- Required runtime dependencies: `sdkwork_database_sqlx::DatabasePool` and an
-  approved `sdkwork_database_id::IdGenerator`.
-- Implemented service port: `SingleSkuMerchandiseRepositoryPort`.
-- Update persistence preserves `NullablePatch<T>` tri-state semantics for
-  nullable description metadata and original price.
+- Repository adapter: `PostgresCommerceCatalogStore`.
+- Required runtime dependency: a `sqlx::PgPool` supplied by the composition
+  root; pool construction and lifecycle stay external to this crate.
+- Serves the catalog repository surface against the merchandise PostgreSQL
+  baseline. Authoritative-server persistence is PostgreSQL only.
 - No database schema, migration, HTTP route, or SDK authority is owned here.
 
 ## Canonical Specs

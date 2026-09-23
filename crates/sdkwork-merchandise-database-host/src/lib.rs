@@ -34,7 +34,7 @@ impl MerchandiseDatabaseHost {
 /// `RegistryLifecycleOrchestrator::bootstrap_all` — the same
 /// convention-over-configuration entry point used by payment/order/membership.
 pub fn database_module() -> Result<DefaultDatabaseModule, SpiError> {
-    DefaultDatabaseModule::from_app_root(&resolve_app_root())
+    DefaultDatabaseModule::from_app_root(resolve_app_root())
 }
 
 pub async fn bootstrap_merchandise_database(

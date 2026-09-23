@@ -10,8 +10,13 @@ publish.workspace = true
 [lints]
 workspace = true
 [lib]
+name = "sdkwork_merchandise_service_host"
 path = "src/lib.rs"
 
 [dependencies]
 sdkwork_merchandise_database_host.workspace = true
+sdkwork-database-id.workspace = true
 sdkwork-database-sqlx.workspace = true
+sdkwork-web-bootstrap.workspace = true
+sdkwork-web-core.workspace = true
+tracing.workspace = true

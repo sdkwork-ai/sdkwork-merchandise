@@ -53,7 +53,7 @@
     {
       "file": "SUBJECT_ID_SPEC.md",
       "path": "../../../../sdkwork-specs/SUBJECT_ID_SPEC.md",
-      "purpose": "Approved Snowflake entity-id generation and serialization."
+      "purpose": "Approved entity-id generation and wire serialization."
     },
     {
       "file": "CODE_STYLE_SPEC.md",
@@ -88,17 +88,14 @@
     ],
     "providedPorts": [
       {
-        "name": "singleSkuMerchandiseRepository",
-        "export": "."
+        "name": "catalogRepository",
+        "export": ".",
+        "target": "sdkwork_merchandise_repository_sqlx::PostgresCommerceCatalogStore"
       }
     ],
     "requiredPorts": [
       {
         "name": "databasePool",
-        "export": "."
-      },
-      {
-        "name": "entityIdGenerator",
         "export": "."
       }
     ],
@@ -113,8 +110,8 @@
     "configKeys": []
   },
   "integration": {
-    "authority": "The merchandise repository owns SPU/SKU persistence; database schema lifecycle and Snowflake node allocation remain external to this crate.",
-    "dependencyPolicy": "Consumers use the service port and the exported SQLx adapter rather than writing merchandise tables directly.",
+    "authority": "The merchandise repository owns catalog persistence against the merchandise baseline; database schema lifecycle remains external to this crate.",
+    "dependencyPolicy": "Consumers use the service port and the exported PostgreSQL adapter rather than writing merchandise tables directly.",
     "sdkPolicy": "No HTTP SDK is owned or consumed by this crate.",
     "languagePolicy": "Rust and SQLx code follow canonical Rust and database specifications."
   },

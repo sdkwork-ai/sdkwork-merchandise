@@ -4,22 +4,18 @@ name = "sdkwork-merchandise-service"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "SDKWork commerce merchandise domain rules for SPU, SKU, categories, attributes, carts, and buyer addresses."
+description = "SDKWork commerce merchandise domain rules for SPU, SKU, categories, attributes, and price lists."
 
 
 [lints]
 workspace = true
 [lib]
+name = "sdkwork_merchandise_service"
 path = "src/lib.rs"
 
 [dependencies]
-async-trait = { workspace = true }
-chrono = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-uuid = { workspace = true }
 sdkwork_contract_service.workspace = true
-sdkwork-utils-rust.workspace = true
 
 [dev-dependencies]
+serde_json = { workspace = true }
 tokio = { workspace = true }
