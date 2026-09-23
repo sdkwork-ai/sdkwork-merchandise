@@ -289,19 +289,39 @@ struct CreateSkuBody {
 /// Update-SKU body.
 ///
 /// `attribute_value_ids` distinguishes "not mentioned" from "cleared", so a price-only edit cannot
-/// silently erase a variant's axes.
+/// silently erase a variant's axes. `list_price_minor` needs the same three states and cannot get
+/// them from a bare `Option`, because an integer has no in-band empty value the way a list has `[]`;
+/// it is decoded through [`deserialize_present_option`] so an explicit JSON `null` survives as
+/// "clear it" instead of collapsing into "not mentioned".
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UpdateSkuBody {
     name: Option<String>,
     title: Option<String>,
     sale_price_minor: Option<String>,
-    list_price_minor: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    list_price_minor: Option<Option<String>>,
     currency_code: Option<String>,
     fulfillment_type: Option<String>,
     inventory_tracking: Option<String>,
     status: Option<String>,
     attribute_value_ids: Option<Vec<String>>,
+}
+
+/// Distinguishes an absent JSON key from an explicit `null` on a nullable body field.
+///
+/// `Option<T>`'s own `Deserialize` maps both to `None`, and for `listPriceMinor` that collapse is
+/// the whole defect: absent means "leave the stored reference price alone" while `null` means "this
+/// product no longer has one". Wrapping the field in a second `Option` and marking it `default`
+/// restores the missing state — `default` supplies the outer `None` when the key is absent, and
+/// this function supplies `Some` whenever the key is present, so a present `null` arrives as
+/// `Some(None)` and a present value as `Some(Some(value))`.
+fn deserialize_present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 /// Create-media body.
@@ -715,6 +735,54 @@ fn map_category_attribute(value: CategoryAttributeRecord) -> CategoryAttributeRe
         created_at: value.created_at,
         version: value.version,
         updated_at: value.updated_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Pins the one thing the `listPriceMinor` change is entirely about: the difference between a
+    //! key that was **absent** and a key that was **`null`**. Every other property of the update body
+    //! is visible in its type; this one is exactly what a single `Option` erases, so it is asserted
+    //! at the decoder rather than described in a comment.
+
+    use super::UpdateSkuBody;
+
+    fn decode(payload: &str) -> UpdateSkuBody {
+        serde_json::from_str(payload).expect("the update body must decode")
+    }
+
+    #[test]
+    fn an_omitted_reference_price_is_not_a_clearing_write() {
+        let body = decode(r#"{"title":"Amended"}"#);
+
+        assert_eq!(
+            body.list_price_minor, None,
+            "an absent key must leave the stored reference price alone; decoding it as a clear would \
+             let a title-only edit erase the strike-through figure"
+        );
+    }
+
+    #[test]
+    fn an_explicit_null_reference_price_is_a_clearing_write() {
+        let body = decode(r#"{"listPriceMinor":null}"#);
+
+        assert_eq!(
+            body.list_price_minor,
+            Some(None),
+            "an explicit null is the caller saying the product no longer has a reference price"
+        );
+    }
+
+    #[test]
+    fn a_stated_reference_price_survives_as_the_wire_string() {
+        let body = decode(r#"{"listPriceMinor":"12900"}"#);
+
+        assert_eq!(
+            body.list_price_minor,
+            Some(Some("12900".to_owned())),
+            "a restated price must reach the handler as the decimal string API_SPEC section 13.6 \
+             requires, not as a JSON number a browser may have rounded"
+        );
     }
 }
 

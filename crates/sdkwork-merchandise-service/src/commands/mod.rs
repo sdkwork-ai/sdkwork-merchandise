@@ -213,6 +213,14 @@ pub struct CreateProductSkuCommand {
 ///
 /// `metadata` is a three-state field for the same reason: `None` preserves the stored object and
 /// `Some(object)` replaces it, so a price-only edit never disturbs the capability's own fields.
+///
+/// `list_price_minor` is the third three-state field here, and it is the one the earlier two-state
+/// shape could not express. `None` leaves the stored reference price alone, `Some(None)` clears it,
+/// and `Some(Some(minor))` replaces it. With a plain `Option<i64>` the first two collapsed into one
+/// value, so "this product no longer has a strike-through price" had no representation at all and a
+/// caller could only ever restate a price. The HTTP contract publishes the distinction
+/// (`listPriceMinor` is nullable), and the repository applies it inside the same statement that
+/// reads the row, so nothing has to be inferred from a sentinel amount.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UpdateProductSkuCommand {
     pub tenant_id: String,
@@ -220,7 +228,7 @@ pub struct UpdateProductSkuCommand {
     pub name: Option<String>,
     pub title: Option<String>,
     pub sale_price_minor: Option<i64>,
-    pub list_price_minor: Option<i64>,
+    pub list_price_minor: Option<Option<i64>>,
     pub currency_code: Option<String>,
     pub fulfillment_type: Option<FulfillmentType>,
     pub inventory_tracking: Option<InventoryTrackingMode>,
@@ -552,7 +560,9 @@ impl UpdateProductSkuCommand {
         if let Some(minor) = self.sale_price_minor {
             crate::validation::require_non_negative_minor("sale_price_minor", minor)?;
         }
-        if let Some(minor) = self.list_price_minor {
+        // `Some(None)` is the clearing write, not an absent field, so only a restated amount is
+        // range-checked; there is nothing to check about "no reference price".
+        if let Some(Some(minor)) = self.list_price_minor {
             crate::validation::require_non_negative_minor("list_price_minor", minor)?;
         }
         if let Some(currency_code) = self.currency_code.as_deref() {

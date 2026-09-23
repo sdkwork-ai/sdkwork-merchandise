@@ -2060,8 +2060,14 @@ impl PostgresCommerceCatalogStore {
 
         let currency = resolve_currency(&self.pool, &effective_currency).await?;
         let sale_price_minor = command.sale_price_minor.unwrap_or(current_sale);
+        // `Some(None)` clears and `Some(Some(_))` replaces; both are an explicit statement about the
+        // reference price, so neither is caught by the currency-change guard above, which only
+        // refuses a *silent* omission.
         let list_price_minor = match command.list_price_minor {
-            Some(minor) => Some(minor),
+            Some(minor) => minor,
+            // Reachable only when nothing was stored: the guard refuses a currency change that
+            // leaves an existing reference price unaddressed, because a minor count cannot be
+            // reinterpreted under a new scale.
             None if currency_changed => None,
             None => current_list,
         };

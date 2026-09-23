@@ -18,6 +18,7 @@ use sdkwork_merchandise_service::{
     CreateAttributeCommand, CreateCategoryCommand, CreateMediaCommand, CreateProductSkuCommand,
     CreateProductSpuCommand, DeleteMediaCommand, FulfillmentType, InventoryTrackingMode,
     LifecycleStatus, MediaOwnerType, MediaRole, ProductStatus, ProductType, UpdateMediaCommand,
+    UpdateProductSkuCommand,
 };
 
 const ROUTE_MANIFEST: &str =
@@ -338,6 +339,58 @@ fn product_sku_command_owns_the_fulfillment_and_inventory_vocabulary() {
     let mut priceless = command;
     priceless.currency_code = String::new();
     assert!(priceless.validate().is_err());
+}
+
+/// The reference price carries three states, and the command has to keep all three apart.
+///
+/// A `PATCH` that omits the price and a `PATCH` that sends `null` mean opposite things — "leave the
+/// stored figure alone" versus "this product no longer has one" — and a `PATCH` that sends `0` means
+/// a third thing again, because zero is a real price. The single `Option<i64>` this field used to be
+/// could hold two of them, so clearing was unexpressible and the only way to remove a strike-through
+/// figure was to restate a different one. These assertions pin the shape; the decoder that supplies
+/// the states from JSON is pinned where it lives, in `sdkwork-merchandise-web-support`.
+#[test]
+fn sku_update_keeps_the_reference_price_three_states_apart() {
+    let update = |list_price_minor| UpdateProductSkuCommand {
+        tenant_id: TENANT_ID.to_owned(),
+        sku_id: "400001".to_owned(),
+        name: None,
+        title: None,
+        sale_price_minor: None,
+        list_price_minor,
+        currency_code: None,
+        fulfillment_type: None,
+        inventory_tracking: None,
+        status: None,
+        attribute_value_ids: None,
+        metadata: None,
+        expected_version: 7,
+    };
+
+    // Not mentioned, cleared, and restated are three different commands, not one.
+    assert!(
+        update(None).validate().is_ok(),
+        "an omitted price is a valid edit"
+    );
+    assert!(
+        update(Some(None)).validate().is_ok(),
+        "clearing the reference price is a valid edit; if this fails, the only way to remove a \
+         strike-through figure has been made unexpressible again"
+    );
+    assert!(
+        update(Some(Some(0))).validate().is_ok(),
+        "zero is a price, not a synonym for `not declared`, so it must not be refused"
+    );
+
+    // Only a restated amount is a range question; the other two states have no amount to judge.
+    let error = update(Some(Some(-1)))
+        .validate()
+        .expect_err("ck_commerce_product_sku_list_price is `>= 0`");
+    assert!(
+        error.message().contains("list_price_minor"),
+        "the refusal must name the field, got `{}`",
+        error.message()
+    );
 }
 
 /// Category and attribute writes, including the bound the attribute-value CHECK imposes.

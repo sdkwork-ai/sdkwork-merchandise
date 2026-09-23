@@ -101,6 +101,34 @@ macro_rules! parse_optional_int64_or_400 {
     };
 }
 
+/// Parses a three-state `int64` body field: absent stays absent, an explicit JSON `null` becomes
+/// `Some(None)` — the clearing state — and a value becomes `Some(Some(minor))`.
+///
+/// The states are separated here rather than by the body type, because `Option<Option<String>>` only
+/// *carries* the distinction: the outer `None` means the key was absent and the inner one means the
+/// value was `null`, and no amount of parsing can recover that once a bare `Option` has collapsed
+/// it. `listPriceMinor` is the field this exists for — a reference price has to be removable, and an
+/// integer has no in-band empty value the way a list has `[]`.
+fn parse_tri_state_int64(
+    field: &str,
+    raw: &Option<Option<String>>,
+) -> Result<Option<Option<i64>>, String> {
+    match raw {
+        None => Ok(None),
+        Some(None) => Ok(Some(None)),
+        Some(Some(value)) => parse_int64(field, value).map(|parsed| Some(Some(parsed))),
+    }
+}
+
+macro_rules! parse_tri_state_int64_or_400 {
+    ($field:expr, $raw:expr) => {
+        match parse_tri_state_int64($field, $raw) {
+            Ok(value) => value,
+            Err(message) => return validation_response(message),
+        }
+    };
+}
+
 /// Mounts the catalog routes over a store the caller has already constructed.
 ///
 /// The store arrives as the service-owned port, so this crate never names a database, a pool, or a
@@ -664,8 +692,7 @@ async fn backend_update_sku(
     };
     let sale_price_minor =
         parse_optional_int64_or_400!("salePriceMinor", body.sale_price_minor.as_deref());
-    let list_price_minor =
-        parse_optional_int64_or_400!("listPriceMinor", body.list_price_minor.as_deref());
+    let list_price_minor = parse_tri_state_int64_or_400!("listPriceMinor", &body.list_price_minor);
     let fulfillment_type = match body.fulfillment_type.as_deref() {
         Some(raw) => Some(parse_or_422!(FulfillmentType::from_storage_str(raw))),
         None => None,

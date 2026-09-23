@@ -41,6 +41,16 @@ import { fileURLToPath } from "node:url";
 // `MEDIA_RESOURCE_OPTIONAL_KEYS` in both directions — the validator is read back out of
 // `validation/mod.rs`, not paraphrased here, so neither side can move alone.
 //
+// # A nullable wire field
+//
+// A body field the document declares as `type: ["string", "null"]` is carried in Rust as a **nested**
+// `Option`. One `Option` cannot express three states, and a field that can be cleared needs all
+// three: absent (leave it alone), `null` (clear it), and a value (replace it). `UpdateSkuRequest.
+// listPriceMinor` is the field this exists for. The gate unwraps both layers and requires the inner
+// type to match the document's non-`null` branch, so the nullability is compared rather than
+// tolerated — dropping `null` from the document, or flattening the command field back to one
+// `Option`, is a failure either way.
+//
 // # Non-vacuity
 //
 // | mutation                                                       | caught by |
@@ -50,6 +60,8 @@ import { fileURLToPath } from "node:url";
 // | `CreateMediaRequest.resource` inlined instead of `$ref`d        | `each documented property type matches the Rust field type, int64 included` |
 // | `metadata` removed from `MEDIA_RESOURCE_OPTIONAL_KEYS`          | `the shared MediaResource schema declares exactly the key set the domain validates` |
 // | `metadata` added to `MediaResource.required`                    | `the shared MediaResource schema declares exactly the key set the domain validates` |
+// | `UpdateSkuRequest.listPriceMinor` drops `null` from its type    | `each documented property type matches the Rust field type, int64 included` |
+// | `list_price_minor` flattened back to `Option<i64>`              | `every monetary field declares the minor unit and reaches an i64 command field` |
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const OPENAPI = "apis/backend-api/merchandise/shop-backend-api.merchandise.openapi.json";
@@ -255,7 +267,10 @@ const MONEY_BINDINGS = [
     property: "listPriceMinor",
     command: "UpdateProductSkuCommand",
     field: "list_price_minor",
-    type: "Option<i64>",
+    // Nullable on the wire, so the command carries a nested `Option`: the outer one is serde's
+    // "the key was absent" and the inner one is "the value was null". A plain `Option<i64>` would
+    // make "leave the reference price alone" and "clear it" the same instruction.
+    type: "Option<Option<i64>>",
   },
 ];
 
@@ -557,7 +572,16 @@ test("each documented property type matches the Rust field type, int64 included"
       const optional = field.type.startsWith("Option<");
       const inner = optional ? field.type.slice("Option<".length, -1) : field.type;
 
-      if (inner === "Vec<String>") {
+      // A nested `Option` is not decoration. `UpdateProductSkuCommand::list_price_minor` has to tell
+      // three states apart — the key was absent, the value was `null`, the value was a number — and
+      // one `Option` can only carry two. The extra layer is exactly the difference between "leave
+      // the stored reference price alone" and "clear it", and the document makes the same claim with
+      // `type: ["string", "null"]`. So the *inner* type is what has to match the JSON type, and the
+      // nullability is checked alongside it rather than ignored.
+      const nullable = inner.startsWith("Option<");
+      const carried = nullable ? inner.slice("Option<".length, -1) : inner;
+
+      if (carried === "Vec<String>") {
         if (declared.type !== "array" || declared.items?.type !== "string") {
           problems.push(
             `${schemaName}.${property} must be an array of strings to match ${dto}.${field.name}: ${field.type}`,
@@ -571,7 +595,7 @@ test("each documented property type matches the Rust field type, int64 included"
       // check: that the document points at a declared shared schema rather than at an inline blob,
       // which is what makes the shape reviewable and the SDK generatable. The shape itself is
       // compared with the validator by the MediaResource test below.
-      if (inner === "serde_json::Value") {
+      if (carried === "serde_json::Value") {
         const ref = declared.$ref?.split("/").pop();
         if (!ref || !schemas[ref]) {
           problems.push(
@@ -581,25 +605,30 @@ test("each documented property type matches the Rust field type, int64 included"
         continue;
       }
 
-      const expected = { String: "string", bool: "boolean", i32: "integer", i64: "integer" }[inner];
+      const expected = { String: "string", bool: "boolean", i32: "integer", i64: "integer" }[carried];
       if (!expected) {
         problems.push(
           `${dto}.${field.name} has type ${field.type}, which this gate does not map to a JSON type`,
         );
         continue;
       }
-      if (declared.type !== expected) {
+      const declaredTypes = Array.isArray(declared.type) ? declared.type : [declared.type];
+      const expectedTypes = nullable ? [expected, "null"] : [expected];
+      if (
+        declaredTypes.length !== expectedTypes.length
+        || !expectedTypes.every((one) => declaredTypes.includes(one))
+      ) {
         problems.push(
-          `${schemaName}.${property} declares type ${declared.type}, but ${dto}.${field.name} is ${field.type}`,
+          `${schemaName}.${property} declares type ${JSON.stringify(declared.type)}, but ${dto}.${field.name} is ${field.type}`,
         );
       }
 
       // API_SPEC section 13.6: an int64 on the wire is a string, so an int64-valued Rust field must
       // be carried as one. `format: int64` is the document's own claim that the value is that wide.
       if (declared.format === "int64") {
-        if (declared.type !== "string") {
+        if (!declaredTypes.includes("string")) {
           problems.push(
-            `${schemaName}.${property} declares format int64 but type ${declared.type}; API_SPEC section 13.6 requires a string`,
+            `${schemaName}.${property} declares format int64 but type ${JSON.stringify(declared.type)}; API_SPEC section 13.6 requires a string`,
           );
         }
         if (declared["x-sdkwork-int64-string"] !== true) {
@@ -612,7 +641,7 @@ test("each documented property type matches the Rust field type, int64 included"
             `${schemaName}.${property} declares format int64 without a digit pattern`,
           );
         }
-        if (inner !== "String") {
+        if (carried !== "String") {
           problems.push(
             `${schemaName}.${property} is documented as an int64 string but ${dto}.${field.name} is ${field.type}; the adapter must carry the wire string`,
           );

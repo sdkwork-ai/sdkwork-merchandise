@@ -4616,13 +4616,16 @@
             "description": "New charged price, in the currency's minor unit. Required whenever currencyCode changes, because the same integer means a different amount under another currency's exponent."
           },
           "listPriceMinor": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "int64",
             "pattern": "^[0-9]+$",
             "x-sdkwork-int64-string": true,
             "x-sdkwork-money-unit": "minor",
             "x-sdkwork-rust-type": "i64",
-            "description": "New reference price in the same minor unit. Sending the field clears it only by restating a value; an omitted field leaves the stored price unchanged."
+            "description": "New reference price in the same minor unit. Three-state on purpose: omitting the field leaves the stored price unchanged, an explicit `null` clears it, and a value replaces it. Clearing is stated rather than inferred, which is what lets a caller take a strike-through price away at all; `null` is also not `0`, which is a real price and would fail ck_commerce_product_sku_sale_not_above_list whenever the sale price is above it."
           },
           "currencyCode": {
             "type": "string",
