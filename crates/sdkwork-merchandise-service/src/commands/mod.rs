@@ -1,4 +1,5 @@
 use sdkwork_contract_service::CommerceServiceError;
+use serde_json::Value;
 
 use crate::domain::{
     AttributeRole, FulfillmentType, InventoryTrackingMode, LifecycleStatus, MediaOwnerType,
@@ -176,7 +177,7 @@ pub struct ArchiveSpuCommand {
 /// `uk_commerce_product_sku_variant` makes "one live SKU per axis combination" enforceable. A SKU
 /// whose category declares no sales axis must submit an empty set and falls back to its own
 /// `sku_no` as the signature — see `docs/architecture/tech/TECH_ARCHITECTURE.md` section 3.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CreateProductSkuCommand {
     pub tenant_id: String,
     pub organization_id: String,
@@ -190,6 +191,17 @@ pub struct CreateProductSkuCommand {
     pub fulfillment_type: FulfillmentType,
     pub inventory_tracking: InventoryTrackingMode,
     pub attribute_value_ids: Vec<String>,
+    /// Capability-owned metadata for a SKU that sells a service rather than a physical good.
+    ///
+    /// A capability whose SKU carries fields the catalog has no column for — a notary matter's
+    /// `spec`, for instance — writes them here and reads them back unchanged. The baseline keeps one
+    /// carrier per fact, so this is **not** a second home for anything that already has one: sales
+    /// axes belong to `commerce_product_sku_attribute`, translations to `*_translation`, and display
+    /// copy to the text columns. Must be a JSON object; `{}` means "no capability metadata".
+    ///
+    /// `Eq` is deliberately not derived, matching `CreateMediaCommand`: `serde_json::Value` is only
+    /// `PartialEq`, because two JSON numbers are equal when the reals they denote are.
+    pub metadata: Value,
 }
 
 /// Updates a SKU.
@@ -198,7 +210,10 @@ pub struct CreateProductSkuCommand {
 /// `None` leaves the axes untouched, `Some(vec![])` clears them, and any other `Some` replaces the
 /// whole set. A `Vec` that could only append would make "this SKU is no longer sold in red"
 /// inexpressible, and a `Vec` that always replaced would erase the axes of every price-only edit.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// `metadata` is a three-state field for the same reason: `None` preserves the stored object and
+/// `Some(object)` replaces it, so a price-only edit never disturbs the capability's own fields.
+#[derive(Clone, Debug, PartialEq)]
 pub struct UpdateProductSkuCommand {
     pub tenant_id: String,
     pub sku_id: String,
@@ -211,6 +226,7 @@ pub struct UpdateProductSkuCommand {
     pub inventory_tracking: Option<InventoryTrackingMode>,
     pub status: Option<ProductStatus>,
     pub attribute_value_ids: Option<Vec<String>>,
+    pub metadata: Option<Value>,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
     ///
     /// A mismatch is not a malformed request: it means somebody else wrote the row since this
@@ -519,6 +535,7 @@ impl CreateProductSkuCommand {
             crate::validation::require_non_negative_minor("list_price_minor", list)?;
         }
         crate::validation::require_distinct("attribute_value_ids", &self.attribute_value_ids)?;
+        require_metadata_object(&self.metadata)?;
         Ok(())
     }
 }
@@ -544,7 +561,26 @@ impl UpdateProductSkuCommand {
         if let Some(axis) = self.attribute_value_ids.as_deref() {
             crate::validation::require_distinct("attribute_value_ids", axis)?;
         }
+        if let Some(metadata) = self.metadata.as_ref() {
+            require_metadata_object(metadata)?;
+        }
         Ok(())
+    }
+}
+
+/// Rejects a capability metadata payload that is not a JSON object.
+///
+/// `commerce_product_sku.metadata` is `NOT NULL DEFAULT '{}'` and every reader treats it as an object
+/// map, where `{}` means "this SKU declares no capability metadata". Storing an array or a scalar
+/// would write a shape no reader can interpret, so it is refused here as a `422` naming the field
+/// instead of being left for a consumer to trip over.
+fn require_metadata_object(metadata: &Value) -> Result<(), CommerceServiceError> {
+    if metadata.is_object() {
+        Ok(())
+    } else {
+        Err(CommerceServiceError::validation(
+            "metadata must be a JSON object",
+        ))
     }
 }
 impl_required_text_command!(DeleteProductSkuCommand, tenant_id, sku_id);

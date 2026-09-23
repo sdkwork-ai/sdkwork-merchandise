@@ -293,8 +293,28 @@ fn product_sku_command_owns_the_fulfillment_and_inventory_vocabulary() {
         fulfillment_type: FulfillmentType::MembershipActivation,
         inventory_tracking: InventoryTrackingMode::Untracked,
         attribute_value_ids: Vec::new(),
+        // A seller that declares no capability metadata sends the empty object, which is what the
+        // column defaults to. The test that follows pins the other half of the contract: a
+        // non-object is refused before it reaches a statement.
+        metadata: serde_json::json!({}),
     };
     assert!(command.validate().is_ok());
+
+    let mut scalars = command.clone();
+    scalars.metadata = serde_json::json!("not an object");
+    assert!(
+        scalars.validate().is_err(),
+        "metadata is a carrier for a capability's own object, so a scalar must be rejected at the \
+         boundary rather than stored as a JSONB string"
+    );
+
+    let mut lists = command.clone();
+    lists.metadata = serde_json::json!([1, 2, 3]);
+    assert!(
+        lists.validate().is_err(),
+        "an array would make `metadata.key` unaddressable and force every reader to re-derive the \
+         shape; only an object is accepted"
+    );
 
     assert_eq!(
         FulfillmentType::PhysicalShipment.as_storage_str(),

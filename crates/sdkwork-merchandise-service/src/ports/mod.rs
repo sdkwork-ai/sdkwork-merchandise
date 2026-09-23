@@ -234,6 +234,14 @@ pub struct SkuRecord {
     pub created_at: String,
     pub updated_at: String,
     pub attribute_values: Vec<SkuAxisRecord>,
+    /// Capability-owned metadata, carried verbatim from whoever owns the capability.
+    ///
+    /// `commerce_product_sku.metadata` is `NOT NULL DEFAULT '{}'`, so a SKU that declares none reads
+    /// back as the empty object rather than `null`. See [`CreateProductSkuCommand::metadata`] for what
+    /// this column is for and, more importantly, what it is not for.
+    ///
+    /// [`CreateProductSkuCommand::metadata`]: crate::commands::CreateProductSkuCommand::metadata
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Clone, Debug)]

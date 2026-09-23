@@ -571,6 +571,13 @@ CREATE TABLE IF NOT EXISTS commerce_product_sku (
     inventory_policy TEXT NOT NULL DEFAULT 'deny',
     weight_gram BIGINT,
     barcode TEXT,
+    -- Capability-owned metadata for a SKU that sells a service rather than a physical good.
+    --
+    -- The baseline keeps one carrier per fact, so this column is deliberately narrow: sales axes
+    -- live in `commerce_product_sku_attribute`, translations in `*_translation`, and display copy in
+    -- the text columns. What is left — the fields only the owning capability can name — is what a
+    -- capability writes here. `{}` means "this SKU declares no capability metadata".
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     status TEXT NOT NULL DEFAULT 'draft',
     sales_status TEXT NOT NULL DEFAULT 'inactive',
     version BIGINT NOT NULL DEFAULT 0,

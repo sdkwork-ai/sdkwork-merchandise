@@ -627,6 +627,12 @@ async fn backend_create_sku(
         fulfillment_type,
         inventory_tracking,
         attribute_value_ids: body.attribute_value_ids.unwrap_or_default(),
+        // The capability metadata slot is deliberately not on this route. `CreateSkuRequest` is a
+        // closed schema (`additionalProperties: false`), so a field this body never declares cannot
+        // reach the command through HTTP; a capability that owns metadata writes it in-process,
+        // through the same service this handler calls. Sending `{}` states that plainly: a catalog
+        // seller created over HTTP declares no capability metadata, which is also the column default.
+        metadata: serde_json::json!({}),
     };
     match command.validate() {
         Ok(()) => {}
@@ -685,6 +691,11 @@ async fn backend_update_sku(
         inventory_tracking,
         status,
         attribute_value_ids: body.attribute_value_ids,
+        // `None` is the load-bearing choice, not a convenient default: this route has no metadata
+        // field (closed `UpdateSkuRequest`), so a price-only edit made over HTTP must leave whatever
+        // the owning capability stored untouched. Sending `Some({})` here would let a seller's edit
+        // erase another capability's metadata as a side effect.
+        metadata: None,
     };
     match command.validate() {
         Ok(()) => {}

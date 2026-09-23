@@ -107,7 +107,8 @@ macro_rules! sku_columns {
     () => {
         "id, tenant_id, organization_id, spu_id, sku_no, variant_signature, name, title, \
          currency_code, price_scale, sale_price_minor, list_price_minor, fulfillment_type, \
-         inventory_tracking, status, sales_status, published_at, version, created_at, updated_at"
+         inventory_tracking, status, sales_status, metadata, published_at, version, created_at, \
+         updated_at"
     };
 }
 
@@ -568,8 +569,8 @@ const INSERT_SKU_SQL: &str = concat!(
     "INSERT INTO commerce_product_sku
          (id, tenant_id, organization_id, spu_id, sku_no, variant_signature, name, title,
           currency_code, price_scale, list_price_minor, sale_price_minor, fulfillment_type,
-          inventory_tracking, status, sales_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft', 'inactive')
+          inventory_tracking, metadata, status, sales_status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'draft', 'inactive')
      RETURNING ",
     sku_columns!()
 );
@@ -595,6 +596,7 @@ const UPDATE_SKU_SQL: &str = concat!(
          price_scale = $6,
          fulfillment_type = COALESCE($7::TEXT, fulfillment_type),
          inventory_tracking = COALESCE($8::TEXT, inventory_tracking),
+         metadata = COALESCE($13::JSONB, metadata),
          status = COALESCE($9::TEXT, status),
          sales_status = CASE WHEN COALESCE($9::TEXT, status) = 'active' THEN 'active'
                              ELSE 'inactive' END,
@@ -1851,7 +1853,10 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to list skus", error))?;
 
-        let mut skus: Vec<SkuRecord> = rows.iter().map(map_sku_row).collect();
+        let mut skus: Vec<SkuRecord> = rows
+            .iter()
+            .map(map_sku_row)
+            .collect::<Result<Vec<_>, _>>()?;
         let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
         attach_sku_axes(&self.pool, tenant_id, &mut skus).await?;
         Ok(skus)
@@ -1890,12 +1895,14 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to retrieve sku", error))?;
 
-        let Some(mut sku) = row.as_ref().map(map_sku_row) else {
+        let Some(row) = row.as_ref() else {
             return Ok(None);
         };
-        let mut skus = vec![sku];
+        // The axes are loaded through the same helper the list path uses, so a retrieved SKU and a
+        // listed SKU cannot disagree about which positions they occupy.
+        let mut skus = vec![map_sku_row(row)?];
         attach_sku_axes(&self.pool, tenant_id, &mut skus).await?;
-        sku = skus.swap_remove(0);
+        let sku = skus.swap_remove(0);
         Ok(Some(sku))
     }
 
@@ -1957,6 +1964,7 @@ impl PostgresCommerceCatalogStore {
             .bind(sale_price_minor)
             .bind(command.fulfillment_type.as_storage_str())
             .bind(command.inventory_tracking.as_storage_str())
+            .bind(&command.metadata)
             .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to create sku", error))?;
@@ -1976,7 +1984,7 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to commit sku creation", error))?;
 
-        let mut sku = map_sku_row(&row);
+        let mut sku = map_sku_row(&row)?;
         sku.attribute_values = axes;
         Ok(sku)
     }
@@ -2114,6 +2122,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(command.metadata.as_ref())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update sku", error))?;
@@ -2138,7 +2147,7 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to commit sku update", error))?;
 
-        let mut sku = map_sku_row(&row);
+        let mut sku = map_sku_row(&row)?;
         match replaced_axes {
             Some(axes) => sku.attribute_values = axes,
             None => {
@@ -2895,8 +2904,16 @@ fn map_spu_row(row: &sqlx::postgres::PgRow) -> SpuRecord {
 /// whole page at once. Callers attach them through [`attach_sku_axes`]; leaving the field defaulted
 /// here rather than synthesising a placeholder is what keeps "this SKU has no axes" and "the axes
 /// were not loaded" from looking the same to a reader of the record.
-pub(crate) fn map_sku_row(row: &sqlx::postgres::PgRow) -> SkuRecord {
-    SkuRecord {
+pub(crate) fn map_sku_row(row: &sqlx::postgres::PgRow) -> Result<SkuRecord, CommerceServiceError> {
+    // Fallible for the same reason `map_media_row` is: `metadata` is `NOT NULL DEFAULT '{}'`, so a
+    // decode failure means the statement selected the wrong column type — not that the capability
+    // declared nothing. Turning that into an empty object would make "no metadata" and "metadata
+    // that failed to load" indistinguishable to the caller.
+    let metadata: Value = row
+        .try_get("metadata")
+        .map_err(|error| store_error("failed to read sku metadata", error))?;
+
+    Ok(SkuRecord {
         id: bigint_cell(row, "id"),
         tenant_id: bigint_cell(row, "tenant_id"),
         organization_id: bigint_cell(row, "organization_id"),
@@ -2918,7 +2935,8 @@ pub(crate) fn map_sku_row(row: &sqlx::postgres::PgRow) -> SkuRecord {
         created_at: timestamp_cell(row, "created_at"),
         updated_at: timestamp_cell(row, "updated_at"),
         attribute_values: Vec::new(),
-    }
+        metadata,
+    })
 }
 
 fn map_sku_axis_row(row: &sqlx::postgres::PgRow) -> (i64, SkuAxisRecord) {
