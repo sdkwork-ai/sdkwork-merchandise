@@ -32,6 +32,9 @@ pub fn catalog_service_contract() -> CommerceServiceContract {
             "skus.create",
             "skus.update",
             "skus.delete",
+            "media.create",
+            "media.update",
+            "media.delete",
         ],
         vec![
             "categories.management.list",
@@ -41,6 +44,7 @@ pub fn catalog_service_contract() -> CommerceServiceContract {
             "products.management.list",
             "products.management.retrieve",
             "skus.list",
+            "media.list",
         ],
         vec![
             crate::ports::CATALOG_REPOSITORY_PORT,

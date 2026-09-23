@@ -101,9 +101,119 @@ pub enum AttributeRole {
     Parameter,
 }
 
+/// `commerce_product_media.owner_type`.
+///
+/// The owner of a media attachment is named by a *kind* plus an id rather than by a nullable
+/// foreign-key column per owner table. `commerce_product_media.owner_id` therefore has no
+/// referential constraint: PostgreSQL cannot express "this BIGINT points at one of four tables",
+/// and four nullable FK columns would let a row claim two owners at once.
+///
+/// Storage spellings are the business nouns the DDL accepts. `Spu` is stored as `spu` — the HTTP
+/// surface calls the same row a `product`, and the translation happens in the adapter, never here.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MediaOwnerType {
+    /// Stored as `spu`.
+    Spu,
+    /// Stored as `sku`.
+    Sku,
+    Category,
+    /// Stored as `attribute_value`: a swatch attached to one dictionary value.
+    AttributeValue,
+}
+
+/// `commerce_product_media.media_role`.
+///
+/// The role is domain vocabulary, not a storage fact about the file: the same Drive resource is a
+/// `gallery_image` on one product and a `sku_image` on another. `MEDIA_RESOURCE_SPEC` section 5
+/// fixes this set for the merchandise profile.
+///
+/// `Certificate` and `Manual` exist for the document-shaped media a catalog really carries
+/// (conformity certificates, user manuals), which is why they are roles rather than a separate
+/// attachment table.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MediaRole {
+    MainImage,
+    GalleryImage,
+    DetailImage,
+    /// Stored as `sku_image`: a SKU's own picture on a sales axis.
+    SkuImage,
+    Video,
+    Manual,
+    Certificate,
+}
+
 // There is deliberately no draft family in this module: the catalog write model is the command set
 // in `crate::commands`, which `crate::ports::CatalogRepositoryPort` consumes. A parallel draft type
 // per table would be a second name for every field, with no single owner of the write vocabulary.
+
+impl MediaOwnerType {
+    #[must_use]
+    pub const fn as_storage_str(self) -> &'static str {
+        match self {
+            Self::Spu => "spu",
+            Self::Sku => "sku",
+            Self::Category => "category",
+            Self::AttributeValue => "attribute_value",
+        }
+    }
+
+    pub fn from_storage_str(field: &str, raw: &str) -> Result<Self, CommerceServiceError> {
+        let value = match raw {
+            "spu" => Self::Spu,
+            "sku" => Self::Sku,
+            "category" => Self::Category,
+            "attribute_value" => Self::AttributeValue,
+            _ => return Err(unknown_value(field, raw, MEDIA_OWNER_TYPE_VALUES)),
+        };
+        Ok(value)
+    }
+
+    /// Whether this owner kind may carry the given role.
+    ///
+    /// `ck_commerce_product_media_owner_role` rejects an `attribute_value` owner with any role
+    /// outside the image set, because a dictionary value's media is its swatch. Expressing the rule
+    /// as a method on the type means the constraint is stated once and the adapter cannot invent a
+    /// second interpretation.
+    #[must_use]
+    pub const fn admits_role(self, role: MediaRole) -> bool {
+        match self {
+            Self::AttributeValue => matches!(
+                role,
+                MediaRole::MainImage | MediaRole::SkuImage | MediaRole::GalleryImage
+            ),
+            Self::Spu | Self::Sku | Self::Category => true,
+        }
+    }
+}
+
+impl MediaRole {
+    #[must_use]
+    pub const fn as_storage_str(self) -> &'static str {
+        match self {
+            Self::MainImage => "main_image",
+            Self::GalleryImage => "gallery_image",
+            Self::DetailImage => "detail_image",
+            Self::SkuImage => "sku_image",
+            Self::Video => "video",
+            Self::Manual => "manual",
+            Self::Certificate => "certificate",
+        }
+    }
+
+    pub fn from_storage_str(field: &str, raw: &str) -> Result<Self, CommerceServiceError> {
+        let value = match raw {
+            "main_image" => Self::MainImage,
+            "gallery_image" => Self::GalleryImage,
+            "detail_image" => Self::DetailImage,
+            "sku_image" => Self::SkuImage,
+            "video" => Self::Video,
+            "manual" => Self::Manual,
+            "certificate" => Self::Certificate,
+            _ => return Err(unknown_value(field, raw, MEDIA_ROLE_VALUES)),
+        };
+        Ok(value)
+    }
+}
 
 impl AttributeRole {
     #[must_use]
@@ -256,6 +366,9 @@ const FULFILLMENT_TYPE_VALUES: &str =
 const INVENTORY_TRACKING_VALUES: &str = "none, quantity";
 const LIFECYCLE_STATUS_VALUES: &str = "active, inactive";
 const ATTRIBUTE_ROLE_VALUES: &str = "key, sales, parameter";
+const MEDIA_OWNER_TYPE_VALUES: &str = "spu, sku, category, attribute_value";
+const MEDIA_ROLE_VALUES: &str =
+    "main_image, gallery_image, detail_image, sku_image, video, manual, certificate";
 
 /// Rejects a value the baseline CHECK would reject, naming the permitted set.
 ///

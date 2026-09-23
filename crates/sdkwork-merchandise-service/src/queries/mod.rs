@@ -80,11 +80,18 @@ pub struct ProductSpuRetrieveQuery {
     pub spu_id: String,
 }
 
+/// Lists SKUs.
+///
+/// `attribute_value_id` narrows the page to the SKUs that sit on one sales-axis value — the
+/// buyer-facing question "which bodies does this trim come in". It is a filter rather than part of
+/// the address because a value is shared by every SKU that carries it, and it is the read path
+/// `idx_commerce_product_sku_attribute_tenant_value` exists for.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductSkuListQuery {
     pub tenant_id: String,
     pub organization_id: Option<String>,
     pub spu_id: Option<String>,
+    pub attribute_value_id: Option<String>,
     pub status: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
@@ -96,10 +103,22 @@ pub struct ProductSkuRetrieveQuery {
     pub sku_id: String,
 }
 
+/// Lists media attachments.
+///
+/// `owner_type` and `owner_id` are filters that only mean something together — an id alone is
+/// ambiguous across the four owner tables — so the repository narrows on the pair and a caller that
+/// supplies one without the other gets the whole tenant's attachments rather than a wrong set.
+/// That is deliberate: the pair is an optimisation of the address, not an access rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SkuPriceRetrieveQuery {
+pub struct MediaListQuery {
     pub tenant_id: String,
-    pub sku_id: String,
+    pub organization_id: Option<String>,
+    pub owner_type: Option<String>,
+    pub owner_id: Option<String>,
+    pub media_role: Option<String>,
+    pub status: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
 }
 
 macro_rules! impl_query_new {
@@ -157,9 +176,9 @@ impl_query_new!(PriceListListQuery, required: [tenant_id], optional: [organizati
 impl_query_new!(CategoryAttributeListQuery, required: [tenant_id], optional: [organization_id, category_id, attribute_id, status], page: [page, page_size]);
 impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, q, category_id, product_type, status, sort], page: [page, page_size]);
 impl_query_new!(ProductSpuRetrieveQuery, required: [tenant_id, spu_id], optional: []);
-impl_query_new!(ProductSkuListQuery, required: [tenant_id], optional: [organization_id, spu_id, status], page: [page, page_size]);
+impl_query_new!(ProductSkuListQuery, required: [tenant_id], optional: [organization_id, spu_id, attribute_value_id, status], page: [page, page_size]);
 impl_query_new!(ProductSkuRetrieveQuery, required: [tenant_id, sku_id], optional: []);
-impl_query_new!(SkuPriceRetrieveQuery, required: [tenant_id, sku_id], optional: []);
+impl_query_new!(MediaListQuery, required: [tenant_id], optional: [organization_id, owner_type, owner_id, media_role, status], page: [page, page_size]);
 
 fn required_text(field_name: &str, value: &str) -> Result<String, CommerceServiceError> {
     crate::validation::require_non_empty(field_name, value)?;
@@ -183,6 +202,7 @@ mod tests {
             "tenant-1",
             None,
             Some("product-1"),
+            None,
             Some("active"),
             Some(1),
             Some(201),

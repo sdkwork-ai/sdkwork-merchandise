@@ -14,8 +14,11 @@ name = "sdkwork_merchandise_service"
 path = "src/lib.rs"
 
 [dependencies]
+# `serde_json` is a real dependency, not a test one: the media read model carries the
+# `commerce_product_media.resource_snapshot` JSONB projection, and the write model validates the
+# `MediaResource` document the caller submits before it can become a reference.
+serde_json = { workspace = true }
 sdkwork_contract_service.workspace = true
 
 [dev-dependencies]
-serde_json = { workspace = true }
 tokio = { workspace = true }

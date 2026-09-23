@@ -1,14 +1,28 @@
 //! Merchandise service composition host.
 //!
-//! This crate is the composition root for the Merchandise capability. It owns two things that must
+//! This crate is the composition root for the Merchandise capability. It owns three things that must
 //! exist exactly once per process:
 //!
-//! 1. the authoritative database pool, and
-//! 2. the Snowflake identity every repository mints primary keys from.
+//! 1. the authoritative database pool,
+//! 2. the Snowflake identity every repository mints primary keys from, and
+//! 3. the catalog repository implementation bound to the port the service crate declares.
 //!
-//! Both are decided here and injected downward. A repository that opened its own pool would defeat
-//! the module's connection budget; a repository that built its own generator would hand a second
-//! writer the same node id, and Snowflake ids would collide silently.
+//! All three are decided here and injected downward. A repository that opened its own pool would
+//! defeat the module's connection budget; a repository that built its own generator would hand a
+//! second writer the same node id, and Snowflake ids would collide silently.
+//!
+//! # Why the repository is constructed here
+//!
+//! `CatalogRepositoryPort` is declared by `sdkwork-merchandise-service` and implemented by
+//! `sdkwork-merchandise-repository-sqlx`. Someone has to name both, and the layering rules put that
+//! someone here: a route crate must not depend on a concrete repository, a service crate must not
+//! either, and the repository crate cannot construct itself for a caller it does not know. A host
+//! that merely forwarded a pool downward would leave the binding to the transport layer, which is
+//! how the HTTP adapter came to own the persistence contract.
+//!
+//! Constructing it here also moves one invariant to startup. The catalog store needs the
+//! authoritative PostgreSQL pool, so a host built over any other backend now fails in its
+//! constructor instead of panicking deep inside a request path.
 
 mod identity;
 mod runtime_env;
@@ -22,6 +36,8 @@ use sdkwork_database_sqlx::{process_shared_database_pool, DatabasePool};
 use sdkwork_merchandise_database_host::{
     bootstrap_merchandise_database, bootstrap_merchandise_database_from_env,
 };
+use sdkwork_merchandise_repository_sqlx::PostgresCommerceCatalogStore;
+use sdkwork_merchandise_service::CatalogRepositoryPort;
 
 pub use identity::{
     identity_posture, shared_identity, IdentityPosture, MerchandiseIdentity,
@@ -37,6 +53,7 @@ pub struct MerchandiseServiceHost {
     database_pool: DatabasePool,
     identity: Arc<MerchandiseIdentity>,
     id_generator: Arc<dyn IdGenerator>,
+    catalog_repository: Arc<dyn CatalogRepositoryPort>,
 }
 
 impl MerchandiseServiceHost {
@@ -69,10 +86,20 @@ impl MerchandiseServiceHost {
         // One identity, two handles: the concrete handle keeps the node lease alive and answers
         // diagnostics, the trait object is what the repository layer is wired against.
         let id_generator: Arc<dyn IdGenerator> = identity.clone();
+        // The catalog store is built from this process's single pool and single generator, so it
+        // cannot mint ids under a second node id or open a second connection budget. It is stored
+        // as the port, never as the concrete type: callers receive exactly what they may depend on.
+        let postgres_pool = database_pool.as_postgres().ok_or_else(|| {
+            "the merchandise catalog store requires an authoritative PostgreSQL pool".to_owned()
+        })?;
+        let catalog_repository: Arc<dyn CatalogRepositoryPort> = Arc::new(
+            PostgresCommerceCatalogStore::new(postgres_pool.clone(), Arc::clone(&id_generator)),
+        );
         Ok(Self {
             database_pool,
             identity,
             id_generator,
+            catalog_repository,
         })
     }
 
@@ -86,6 +113,15 @@ impl MerchandiseServiceHost {
     /// repository cannot be wired to a divergent sequence.
     pub fn id_generator(&self) -> Arc<dyn IdGenerator> {
         Arc::clone(&self.id_generator)
+    }
+
+    /// The catalog repository implementation, handed out as the service-owned port.
+    ///
+    /// This is the single place where the port and its implementation are known to be the same
+    /// thing. Route code receives `Arc<dyn CatalogRepositoryPort>` and can swap in a test double
+    /// without the catalog routes changing, because they never named the concrete store.
+    pub fn catalog_repository(&self) -> Arc<dyn CatalogRepositoryPort> {
+        Arc::clone(&self.catalog_repository)
     }
 
     /// The process identity, for diagnostics and node-id assertions.

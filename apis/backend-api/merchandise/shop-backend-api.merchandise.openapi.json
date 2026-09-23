@@ -166,7 +166,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkListResponse"
+                  "$ref": "#/components/schemas/CategoryListResponse"
                 }
               }
             }
@@ -263,7 +263,30 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Category"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -347,7 +370,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/CreateCategoryRequest"
               }
             }
           }
@@ -373,6 +396,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
@@ -381,7 +415,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Category"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
                 }
               }
             }
@@ -436,6 +503,26 @@
               }
             }
           },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal server error",
             "content": {
@@ -465,7 +552,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/UpdateCategoryRequest"
               }
             }
           }
@@ -473,7 +560,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/categories/{categoryId}",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       },
       "delete": {
         "tags": [
@@ -489,11 +583,102 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -512,7 +697,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/categories/{categoryId}",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       }
     },
     "/backend/v3/api/catalog/products": {
@@ -591,7 +783,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkListResponse"
+                  "$ref": "#/components/schemas/ProductListResponse"
                 }
               }
             }
@@ -688,7 +880,30 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Product"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -772,7 +987,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/CreateProductRequest"
               }
             }
           }
@@ -806,7 +1021,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Product"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
                 }
               }
             }
@@ -904,6 +1152,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
@@ -912,7 +1171,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Product"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
                 }
               }
             }
@@ -959,6 +1251,26 @@
           },
           "409": {
             "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -996,7 +1308,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/UpdateProductRequest"
               }
             }
           }
@@ -1004,7 +1316,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/products/{productId}",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       },
       "delete": {
         "tags": [
@@ -1020,11 +1339,102 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1043,7 +1453,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/products/{productId}",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       }
     },
     "/backend/v3/api/catalog/products/{productId}/publish": {
@@ -1061,6 +1478,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
@@ -1069,7 +1497,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Product"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
                 }
               }
             }
@@ -1116,6 +1577,26 @@
           },
           "409": {
             "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1151,7 +1632,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/products/{productId}/publish",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       }
     },
     "/backend/v3/api/catalog/products/{productId}/archive": {
@@ -1169,6 +1657,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
@@ -1177,7 +1676,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Product"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
                 }
               }
             }
@@ -1232,6 +1764,26 @@
               }
             }
           },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal server error",
             "content": {
@@ -1259,7 +1811,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/products/{productId}/archive",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       }
     },
     "/backend/v3/api/catalog/skus": {
@@ -1272,6 +1831,14 @@
         "parameters": [
           {
             "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attribute_value_id",
             "in": "query",
             "required": false,
             "schema": {
@@ -1314,7 +1881,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkListResponse"
+                  "$ref": "#/components/schemas/SkuListResponse"
                 }
               }
             }
@@ -1411,7 +1978,30 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Sku"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1495,7 +2085,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/CreateSkuRequest"
               }
             }
           }
@@ -1521,6 +2111,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
@@ -1529,7 +2130,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Sku"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
                 }
               }
             }
@@ -1584,6 +2218,26 @@
               }
             }
           },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal server error",
             "content": {
@@ -1613,7 +2267,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/UpdateSkuRequest"
               }
             }
           }
@@ -1621,7 +2275,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/skus/{skuId}",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       },
       "delete": {
         "tags": [
@@ -1637,11 +2298,102 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1660,7 +2412,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/skus/{skuId}",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       }
     },
     "/backend/v3/api/catalog/attributes": {
@@ -1707,7 +2466,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkListResponse"
+                  "$ref": "#/components/schemas/AttributeListResponse"
                 }
               }
             }
@@ -1804,7 +2563,30 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Attribute"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1888,7 +2670,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/CreateAttributeRequest"
               }
             }
           }
@@ -1959,7 +2741,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkListResponse"
+                  "$ref": "#/components/schemas/CategoryAttributeListResponse"
                 }
               }
             }
@@ -2056,7 +2838,30 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/CategoryAttribute"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -2140,7 +2945,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/CreateCategoryAttributeRequest"
               }
             }
           }
@@ -2166,6 +2971,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
@@ -2174,7 +2990,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/CategoryAttribute"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
                 }
               }
             }
@@ -2229,6 +3078,26 @@
               }
             }
           },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal server error",
             "content": {
@@ -2258,7 +3127,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/UpdateCategoryAttributeRequest"
               }
             }
           }
@@ -2266,7 +3135,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/category_attributes/{bindingId}",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       },
       "delete": {
         "tags": [
@@ -2282,11 +3158,102 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2305,7 +3272,14 @@
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
         "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/category_attributes/{bindingId}",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       }
     },
     "/backend/v3/api/catalog/price_lists": {
@@ -2368,7 +3342,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkListResponse"
+                  "$ref": "#/components/schemas/PriceListListResponse"
                 }
               }
             }
@@ -2465,7 +3439,30 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/PriceList"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -2549,7 +3546,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+                "$ref": "#/components/schemas/CreatePriceListRequest"
               }
             }
           }
@@ -2575,6 +3572,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
           }
         ],
         "responses": {
@@ -2583,7 +3591,230 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SdkWorkResourceResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/PriceList"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.priceLists",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePriceListRequest"
+              }
+            }
+          }
+        },
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/price_lists/{priceListId}",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
+      }
+    },
+    "/backend/v3/api/catalog/media": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog media list.",
+        "operationId": "media.list",
+        "parameters": [
+          {
+            "name": "owner_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "owner_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "media_role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaListResponse"
                 }
               }
             }
@@ -2658,33 +3889,1071 @@
         "x-sdkwork-owner": "sdkwork-shop",
         "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
         "x-sdkwork-domain": "commerce",
-        "x-sdkwork-resource": "catalog.priceLists",
+        "x-sdkwork-resource": "catalog.media",
         "x-sdkwork-request-context": "WebRequestContext",
         "x-sdkwork-api-surface": "backend-api",
         "x-sdkwork-server-request-id": true,
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CommerceOperationCommand"
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/media",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.read"
+      },
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog media create.",
+        "operationId": "media.create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Media"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
               }
             }
           }
         },
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.media",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
         "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
-        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/price_lists/{priceListId}",
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/media",
         "x-sdkwork-auth-mode": "dual-token",
-        "x-sdkwork-permission": "commerce.catalog.manage"
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMediaRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/backend/v3/api/catalog/media/{mediaId}": {
+      "patch": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog media update.",
+        "operationId": "media.update",
+        "parameters": [
+          {
+            "name": "mediaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Media"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.media",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/media/{mediaId}",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMediaRequest"
+              }
+            }
+          }
+        },
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
+      },
+      "delete": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog media delete.",
+        "operationId": "media.delete",
+        "parameters": [
+          {
+            "name": "mediaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed. `If-Match` named a version the row no longer carries, so nothing was written; the problem detail names both the expected and the current version. Distinct from `409`, which is a domain state conflict rather than a stale copy.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required. This operation edits an existing row and `If-Match` was not sent, so the server cannot tell which version the caller read.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.media",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/media/{mediaId}",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        }
       }
     }
   },
   "components": {
     "schemas": {
-      "CommerceOperationCommand": {
+      "CreateCategoryRequest": {
         "type": "object",
-        "additionalProperties": true,
-        "description": "Operation-specific command payload defined by the owning commerce Rust module."
+        "additionalProperties": false,
+        "required": [
+          "categoryNo",
+          "name"
+        ],
+        "properties": {
+          "categoryNo": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable business key of the category, unique per tenant while the row is live (uk_commerce_product_category_tenant_no)."
+          },
+          "parentId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Parent category id. Omit for a root category."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Default-locale display name. Bound by ck_commerce_product_category_name_length (1..200)."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Ordering rank among the siblings. Defaults to 0."
+          }
+        }
+      },
+      "UpdateCategoryRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "New parent. Omit to leave the parent unchanged."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "New default-locale name. Bound by ck_commerce_product_category_name_length (1..200)."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "New ordering rank."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Lifecycle status. ck_commerce_product_category_status admits 'active' and 'inactive' only; retirement is a DELETE, never a status."
+          }
+        }
+      },
+      "CreateProductRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "productNo",
+          "title",
+          "productType",
+          "categoryId"
+        ],
+        "properties": {
+          "productNo": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable business key of the product, unique per tenant while the row is live (uk_commerce_product_spu_tenant_no)."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "Default-locale display title. commerce_product_spu.name is derived from it and bound by ck_commerce_product_spu_name_length (1..300)."
+          },
+          "subtitle": {
+            "type": "string",
+            "description": "Optional default-locale subtitle."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional default-locale description."
+          },
+          "productType": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "digital",
+              "service",
+              "membership",
+              "points"
+            ],
+            "description": "How the product is delivered in the large. ck_commerce_product_spu_product_type is the authority for this set."
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Category the product belongs to. Required: commerce_product_spu.category_id is NOT NULL."
+          }
+        }
+      },
+      "UpdateProductRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "New default-locale title. Bound by ck_commerce_product_spu_name_length (1..300) through the derived name."
+          },
+          "subtitle": {
+            "type": "string",
+            "description": "New default-locale subtitle."
+          },
+          "description": {
+            "type": "string",
+            "description": "New default-locale description."
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Move the product to another category."
+          }
+        }
+      },
+      "CreateSkuRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "productId",
+          "skuNo",
+          "name",
+          "title",
+          "salePriceMinor",
+          "currencyCode",
+          "fulfillmentType",
+          "inventoryTracking"
+        ],
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Product the SKU belongs to."
+          },
+          "skuNo": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable business key of the SKU, unique per tenant while the row is live (uk_commerce_product_sku_tenant_no)."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Default-locale SKU name."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Default-locale SKU title."
+          },
+          "salePriceMinor": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-money-unit": "minor",
+            "x-sdkwork-rust-type": "i64",
+            "description": "Price actually charged, in the currency's minor unit (fen for CNY, yen for JPY). API_SPEC section 13.2.1 fixes the wire unit at the minor unit, so 640 means 640 fen and no layer rescales it."
+          },
+          "listPriceMinor": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-money-unit": "minor",
+            "x-sdkwork-rust-type": "i64",
+            "description": "Optional reference price in the same minor unit, used for the strike-through figure. It is never below salePriceMinor (ck_commerce_product_sku_sale_not_above_list); omit it rather than sending 0 to mean \"not declared\"."
+          },
+          "currencyCode": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{3,8}$",
+            "description": "ISO 4217 code of the currency every amount in this request is stated in. Bound by ck_commerce_currency_code_shape and by the foreign key to commerce_currency."
+          },
+          "fulfillmentType": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "digital",
+              "service",
+              "membership_activation",
+              "points_topup"
+            ],
+            "description": "How one unit of this SKU reaches the buyer. ck_commerce_product_sku_fulfillment_type is the authority for this set."
+          },
+          "inventoryTracking": {
+            "type": "string",
+            "enum": [
+              "none",
+              "quantity"
+            ],
+            "description": "Whether stock is tracked for this SKU. The stock itself is owned by sdkwork-inventory; this only declares the policy. ck_commerce_product_sku_inventory_tracking is the authority for this set."
+          },
+          "attributeValueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "int64",
+              "pattern": "^[0-9]+$"
+            },
+            "description": "Positions this SKU occupies on the product category`s sales axes, as dictionary value ids. The attribute behind each value is derived server-side, so a request cannot name an attribute and a value that disagree, and the axes are written as a set. The resolved values must cover every active sales axis of the product category exactly once; a partial combination is refused. The variant signature is recomputed as `attributeNo=valueCode` terms ordered by `attributeNo` and joined with `;`, bounded by ck_commerce_product_sku_variant_signature."
+          }
+        }
+      },
+      "UpdateSkuRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "New default-locale name."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "New default-locale title."
+          },
+          "salePriceMinor": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-money-unit": "minor",
+            "x-sdkwork-rust-type": "i64",
+            "description": "New charged price, in the currency's minor unit. Required whenever currencyCode changes, because the same integer means a different amount under another currency's exponent."
+          },
+          "listPriceMinor": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-money-unit": "minor",
+            "x-sdkwork-rust-type": "i64",
+            "description": "New reference price in the same minor unit. Sending the field clears it only by restating a value; an omitted field leaves the stored price unchanged."
+          },
+          "currencyCode": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{3,8}$",
+            "description": "ISO 4217 code of the currency every amount in this request is stated in. Bound by ck_commerce_currency_code_shape and by the foreign key to commerce_currency."
+          },
+          "fulfillmentType": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "digital",
+              "service",
+              "membership_activation",
+              "points_topup"
+            ],
+            "description": "New fulfillment type."
+          },
+          "inventoryTracking": {
+            "type": "string",
+            "enum": [
+              "none",
+              "quantity"
+            ],
+            "description": "New inventory-tracking declaration."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "inactive",
+              "archived"
+            ],
+            "description": "Lifecycle status. ck_commerce_product_sku_status admits these four; a sellable SKU must also be 'active' (ck_commerce_product_sku_sales_requires_active), and retirement is a DELETE."
+          },
+          "attributeValueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "int64",
+              "pattern": "^[0-9]+$"
+            },
+            "description": "Positions this SKU occupies on the product category`s sales axes, as dictionary value ids. The attribute behind each value is derived server-side, so a request cannot name an attribute and a value that disagree, and the axes are written as a set. The resolved values must cover every active sales axis of the product category exactly once; a partial combination is refused. The variant signature is recomputed as `attributeNo=valueCode` terms ordered by `attributeNo` and joined with `;`, bounded by ck_commerce_product_sku_variant_signature."
+          }
+        }
+      },
+      "CreateAttributeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "attributeNo",
+          "name"
+        ],
+        "properties": {
+          "attributeNo": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable business key of the attribute, unique per tenant while the row is live (uk_commerce_product_attribute_tenant_no)."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Default-locale display name. Bound by ck_commerce_product_attribute_name_length (1..100)."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "One enumerable value. Bound by ck_commerce_product_attribute_value_display_length (1..200)."
+            },
+            "description": "Optional initial enumeration. Each entry becomes one commerce_product_attribute_value row."
+          }
+        }
+      },
+      "CreateCategoryAttributeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "categoryId",
+          "attributeId"
+        ],
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Category whose template the attribute joins."
+          },
+          "attributeId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Attribute dictionary entry being bound."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "key",
+              "sales",
+              "parameter"
+            ],
+            "default": "parameter",
+            "description": "What the attribute means in THIS category: a key attribute identifies the product, a sales attribute splits it into SKUs, a parameter only describes it. Defaults to 'parameter' so an unclassified binding cannot accidentally declare a sales axis. ck_commerce_product_category_attribute_role is the authority for this set."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether a product in this category must carry the attribute."
+          },
+          "searchable": {
+            "type": "boolean",
+            "description": "Whether the value is indexed for search."
+          },
+          "filterable": {
+            "type": "boolean",
+            "description": "Whether the value is offered as a list filter."
+          },
+          "comparable": {
+            "type": "boolean",
+            "description": "Whether the value is offered in comparisons."
+          },
+          "sourceCategoryId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Category this binding was inherited from, when it was materialised rather than authored here. Must differ from categoryId (ck_commerce_product_category_attribute_source_not_self)."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Ordering rank inside the template. Defaults to 0."
+          }
+        }
+      },
+      "UpdateCategoryAttributeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "key",
+              "sales",
+              "parameter"
+            ],
+            "description": "Reclassify the binding. Changing a role is a normal merchandising edit."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "New requiredness."
+          },
+          "searchable": {
+            "type": "boolean",
+            "description": "New searchability."
+          },
+          "filterable": {
+            "type": "boolean",
+            "description": "New filterability."
+          },
+          "comparable": {
+            "type": "boolean",
+            "description": "New comparability."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "New ordering rank."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Lifecycle status of the binding. ck_commerce_product_category_attribute_status admits 'active' and 'inactive'."
+          }
+        }
+      },
+      "CreatePriceListRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "priceListNo",
+          "currencyCode"
+        ],
+        "properties": {
+          "priceListNo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Stable business key of the price list, unique per tenant while the row is live. commerce_price_list.name is derived from it and bound by ck_commerce_price_list_name_length (1..200)."
+          },
+          "currencyCode": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{3,8}$",
+            "description": "ISO 4217 code of the currency every amount in this request is stated in. Bound by ck_commerce_currency_code_shape and by the foreign key to commerce_currency."
+          },
+          "marketCode": {
+            "type": "string",
+            "description": "Market the list applies to, when it is market-scoped. Omit for a list that applies to every market."
+          }
+        }
+      },
+      "UpdatePriceListRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Lifecycle status. ck_commerce_price_list_status admits 'active' and 'inactive'."
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive start of the window in which the list applies. Omit for an open start."
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive end of the window. Must be after startsAt when both are stated (ck_commerce_price_list_window). Omit for an open end."
+          }
+        }
+      },
+      "CreateMediaRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ownerType",
+          "ownerId",
+          "mediaRole",
+          "resource"
+        ],
+        "properties": {
+          "ownerType": {
+            "type": "string",
+            "enum": [
+              "spu",
+              "sku",
+              "category",
+              "attribute_value"
+            ],
+            "description": "Kind of row the attachment hangs off. The values are the storage vocabulary the `ck_commerce_product_media_owner_type` CHECK accepts; this surface calls the `spu` owner a *product* everywhere else (`/catalog/products/{productId}`), but the filter value stays `spu`."
+          },
+          "ownerId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Id of the owning row. Together with `ownerType` it addresses exactly one row; the pair is not constrained by a foreign key, because PostgreSQL cannot express \"this BIGINT points at one of four tables\", so the server verifies the owner exists for the declared kind inside the same transaction that inserts the attachment."
+          },
+          "mediaRole": {
+            "type": "string",
+            "enum": [
+              "main_image",
+              "gallery_image",
+              "detail_image",
+              "sku_image",
+              "video",
+              "manual",
+              "certificate"
+            ],
+            "description": "Role the resource plays on this owner. MEDIA_RESOURCE_SPEC section 5 fixes this set for the merchandise profile, and `ck_commerce_product_media_owner_role` narrows it for one owner kind: an `attribute_value` owner carries a swatch, so only `main_image`, `sku_image`, and `gallery_image` are accepted there. A role outside that subset is refused as a validation error, not by the column."
+          },
+          "resource": {
+            "$ref": "#/components/schemas/MediaResource"
+          },
+          "altText": {
+            "type": "string",
+            "description": "Accessible description for the attachment, overriding the resource `altText`."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Ordering rank within `(ownerType, ownerId, mediaRole)`, ascending. It is unique inside that slot while the row is live (uk_commerce_product_media_slot) and never negative (ck_commerce_product_media_sort_order). The lowest rank of a role is the one rendered first."
+          }
+        }
+      },
+      "UpdateMediaRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mediaRole": {
+            "type": "string",
+            "enum": [
+              "main_image",
+              "gallery_image",
+              "detail_image",
+              "sku_image",
+              "video",
+              "manual",
+              "certificate"
+            ],
+            "description": "Role the resource plays on this owner. MEDIA_RESOURCE_SPEC section 5 fixes this set for the merchandise profile, and `ck_commerce_product_media_owner_role` narrows it for one owner kind: an `attribute_value` owner carries a swatch, so only `main_image`, `sku_image`, and `gallery_image` are accepted there. A role outside that subset is refused as a validation error, not by the column."
+          },
+          "resource": {
+            "$ref": "#/components/schemas/MediaResource"
+          },
+          "altText": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "New ordering rank. The slot unique key is partial on `deleted_at IS NULL`, so two live attachments of one role cannot share a rank."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Lifecycle status. ck_commerce_product_media_status admits `active` and `inactive`; retirement is the delete operation, which keeps the row for history."
+          }
+        }
       },
       "ProblemDetail": {
         "type": "object",
@@ -2900,6 +5169,1296 @@
             "type": "boolean"
           }
         }
+      },
+      "MediaResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "source"
+        ],
+        "description": "Canonical media resource (MEDIA_RESOURCE_SPEC section 3). The same schema is used for the request field that attaches a resource and for the `resourceSnapshot` a stored attachment publishes, so a caller writes and reads one shape. `id` is required here, unlike the base model: `commerce_product_media.media_resource_id` is `BIGINT NOT NULL`, so a resource with no Drive identity has no storage form on this surface.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Stable Drive node id of the resource (MEDIA_RESOURCE_SPEC section 5.1). It is the reference `commerce_product_media.media_resource_id` stores, and the same `source = drive` resource may be attached to several owners."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "video",
+              "audio",
+              "voice",
+              "document",
+              "archive",
+              "model",
+              "other"
+            ],
+            "description": "Media kind. MEDIA_RESOURCE_SPEC section 3 fixes this set."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "drive",
+              "external_url",
+              "data_url",
+              "provider_asset",
+              "generated"
+            ],
+            "description": "Where the bytes live. An SDKWork-owned file must use `drive`; `data_url` is only accepted on a transient payload and must never be persisted as business state."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Delivery URL. It is a hint, not the system of record: it may be signed, temporary, or CDN-derived, which is why no column stores it."
+          },
+          "publicUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "uri": {
+            "type": "string",
+            "description": "Stable URI of the resource. For a Drive resource it is `drive://spaces/{spaceId}/nodes/{nodeId}` and must agree with `id`."
+          },
+          "objectBlobId": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "mimeType": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "sizeBytes": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "checksum": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "algorithm": {
+                "type": "string",
+                "enum": [
+                  "sha256",
+                  "md5",
+                  "etag"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "algorithm",
+              "value"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "durationSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "altText": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "poster": {
+            "$ref": "#/components/schemas/MediaResource"
+          },
+          "thumbnails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MediaResource"
+            }
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MediaResource"
+            }
+          },
+          "access": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "visibility"
+            ],
+            "properties": {
+              "visibility": {
+                "type": "string",
+                "enum": [
+                  "private",
+                  "tenant",
+                  "organization",
+                  "public",
+                  "signed"
+                ]
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "ai": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "provenance": {
+                "type": "string",
+                "enum": [
+                  "uploaded",
+                  "generated",
+                  "edited",
+                  "imported"
+                ]
+              },
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "promptId": {
+                "type": "string"
+              },
+              "generationTaskId": {
+                "type": "string"
+              },
+              "sourceMediaIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "seed": {
+                "type": "string"
+              },
+              "moderationStatus": {
+                "type": "string",
+                "enum": [
+                  "unknown",
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "blocked"
+                ]
+              },
+              "safetyLabels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "categoryNo",
+          "path",
+          "depth",
+          "isLeaf",
+          "name",
+          "sortOrder",
+          "status",
+          "createdAt",
+          "version",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Primary key, minted by the service host before INSERT."
+          },
+          "categoryNo": {
+            "type": "string",
+            "description": "Stable business key of the category, unique per tenant while the row is live."
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Parent category id. Null for a root category; never equal to `id` (ck_commerce_product_category_self_parent)."
+          },
+          "path": {
+            "type": "string",
+            "description": "Materialised ancestor path. Matches ck_commerce_product_category_path_shape."
+          },
+          "depth": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Zero-based depth in the tree. `depth >= 0` per ck_commerce_product_category_depth."
+          },
+          "isLeaf": {
+            "type": "boolean",
+            "description": "True when the category has no live children."
+          },
+          "name": {
+            "type": "string",
+            "description": "Default-locale name. Bounded by ck_commerce_product_category_name_length."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Sibling ordering key, ascending."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Shared lifecycle vocabulary. The authority for this set is the column CHECK constraint named in the field description."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Row creation time."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last write time."
+          },
+          "version": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Row version, advanced by every write to this row and by any write that rewrites the row's own storage identity (a category move also advances the moved subtree). It is the value an update or delete must send back as `If-Match`, and the same number the response's `ETag` carries, so a client that has read a resource can always name the version it read. `API_SPEC` section 17 keeps the version source, the required header, and the two result codes together: a missing `If-Match` answers `42801`, a stale one answers `41201`."
+          }
+        }
+      },
+      "Attribute": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "attributeNo",
+          "name",
+          "valueType",
+          "status",
+          "sortOrder",
+          "createdAt",
+          "version",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Primary key."
+          },
+          "attributeNo": {
+            "type": "string",
+            "description": "Stable business key of the attribute, unique per tenant while the row is live."
+          },
+          "name": {
+            "type": "string",
+            "description": "Default-locale name. Bounded by ck_commerce_product_attribute_name_length."
+          },
+          "valueType": {
+            "type": "string",
+            "enum": [
+              "enum",
+              "text",
+              "number",
+              "bool",
+              "date"
+            ],
+            "description": "Declared value type. ck_commerce_product_attribute_value_type is the authority for this set."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Shared lifecycle vocabulary. The authority for this set is the column CHECK constraint named in the field description."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Sibling ordering key, ascending."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Row creation time."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last write time."
+          },
+          "version": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Row version, advanced by every write to this row and by any write that rewrites the row's own storage identity (a category move also advances the moved subtree). It is the value an update or delete must send back as `If-Match`, and the same number the response's `ETag` carries, so a client that has read a resource can always name the version it read. `API_SPEC` section 17 keeps the version source, the required header, and the two result codes together: a missing `If-Match` answers `42801`, a stale one answers `41201`."
+          }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "productNo",
+          "categoryId",
+          "name",
+          "productType",
+          "status",
+          "salesStatus",
+          "createdAt",
+          "version",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Primary key."
+          },
+          "productNo": {
+            "type": "string",
+            "description": "Stable business key of the product, unique per tenant while the row is live."
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Owning category id."
+          },
+          "name": {
+            "type": "string",
+            "description": "Default-locale name. Bounded by ck_commerce_product_spu_name_length."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default-locale marketing title."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default-locale marketing subtitle."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default-locale long description."
+          },
+          "productType": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "digital",
+              "service",
+              "membership",
+              "points"
+            ],
+            "description": "How the product is fulfilled. ck_commerce_product_spu_product_type is the authority for this set."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "inactive",
+              "archived"
+            ],
+            "description": "Lifecycle status. ck_commerce_product_spu_status is the authority for this set."
+          },
+          "salesStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Whether the product may be sold. ck_commerce_product_spu_sales_status is the authority; `active` requires a non-draft status (ck_commerce_product_spu_sales_requires_published)."
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "First publish time. Null until the product leaves draft (ck_commerce_product_spu_published_at)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Row creation time."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last write time."
+          },
+          "version": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Row version, advanced by every write to this row and by any write that rewrites the row's own storage identity (a category move also advances the moved subtree). It is the value an update or delete must send back as `If-Match`, and the same number the response's `ETag` carries, so a client that has read a resource can always name the version it read. `API_SPEC` section 17 keeps the version source, the required header, and the two result codes together: a missing `If-Match` answers `42801`, a stale one answers `41201`."
+          }
+        }
+      },
+      "Sku": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "productId",
+          "skuNo",
+          "variantSignature",
+          "currencyCode",
+          "minorUnitExponent",
+          "salePriceMinor",
+          "fulfillmentType",
+          "inventoryTracking",
+          "status",
+          "salesStatus",
+          "createdAt",
+          "version",
+          "updatedAt",
+          "attributeValues"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Primary key."
+          },
+          "productId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Owning product id."
+          },
+          "skuNo": {
+            "type": "string",
+            "description": "Stable business key of the SKU, unique per tenant while the row is live."
+          },
+          "variantSignature": {
+            "type": "string",
+            "description": "Deterministic signature of the attribute values that define this variant. Bounded by ck_commerce_product_sku_variant_signature."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default-locale SKU name."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default-locale SKU title."
+          },
+          "currencyCode": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{3,8}$",
+            "description": "ISO 4217 code every amount on this row is stated in."
+          },
+          "minorUnitExponent": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Minor-unit exponent of `currencyCode`, snapshotted from commerce_currency at write time. This is a unit exponent, not an amount: naming it `priceScale` reads as money to the API_SPEC section 13.2 validator, while the storage column keeps its own `price_scale` name. `price_scale BETWEEN 0 AND 8` per ck_commerce_product_sku_price_scale."
+          },
+          "salePriceMinor": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Price actually charged, in the currency minor unit. Never negative (ck_commerce_product_sku_sale_price) and never above listPriceMinor (ck_commerce_product_sku_sale_not_above_list).",
+            "x-sdkwork-money-unit": "minor"
+          },
+          "listPriceMinor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Reference price for the strike-through figure, in the same minor unit. Null means \"not declared\".",
+            "x-sdkwork-money-unit": "minor"
+          },
+          "fulfillmentType": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "digital",
+              "service",
+              "membership_activation",
+              "points_topup"
+            ],
+            "description": "How one unit reaches the buyer. ck_commerce_product_sku_fulfillment_type is the authority for this set."
+          },
+          "inventoryTracking": {
+            "type": "string",
+            "enum": [
+              "none",
+              "quantity"
+            ],
+            "description": "Whether stock is tracked. ck_commerce_product_sku_inventory_tracking is the authority for this set. The stock itself is owned by sdkwork-inventory."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "inactive",
+              "archived"
+            ],
+            "description": "Lifecycle status. ck_commerce_product_sku_status is the authority for this set."
+          },
+          "salesStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Whether the SKU may be sold. `active` requires an active status (ck_commerce_product_sku_sales_requires_active)."
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "First publish time. Null until the SKU leaves draft (ck_commerce_product_sku_published_at)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Row creation time."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last write time."
+          },
+          "attributeValues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "attributeId",
+                "attributeValueId",
+                "attributeNo",
+                "valueCode",
+                "displayValue"
+              ],
+              "properties": {
+                "attributeId": {
+                  "type": "string",
+                  "format": "int64",
+                  "pattern": "^-?[0-9]+$",
+                  "x-sdkwork-int64-string": true,
+                  "x-sdkwork-rust-type": "i64",
+                  "description": "Dictionary attribute the axis belongs to."
+                },
+                "attributeValueId": {
+                  "type": "string",
+                  "format": "int64",
+                  "pattern": "^-?[0-9]+$",
+                  "x-sdkwork-int64-string": true,
+                  "x-sdkwork-rust-type": "i64",
+                  "description": "Dictionary value this SKU occupies on the axis."
+                },
+                "attributeNo": {
+                  "type": "string",
+                  "description": "Stable business key of the attribute."
+                },
+                "valueCode": {
+                  "type": "string",
+                  "description": "Stable business key of the value."
+                },
+                "displayValue": {
+                  "type": "string",
+                  "description": "Default-locale label of the value."
+                }
+              }
+            },
+            "description": "The SKU positions on its product category sales axes. Always present, empty when the category declares no sales axis: it is a list rather than a nullable field so \"no axes\" and \"axes not loaded\" cannot look the same. `variantSignature` carries the same information as one string; these rows are what a variant matrix is rendered from."
+          },
+          "version": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Row version, advanced by every write to this row and by any write that rewrites the row's own storage identity (a category move also advances the moved subtree). It is the value an update or delete must send back as `If-Match`, and the same number the response's `ETag` carries, so a client that has read a resource can always name the version it read. `API_SPEC` section 17 keeps the version source, the required header, and the two result codes together: a missing `If-Match` answers `42801`, a stale one answers `41201`."
+          }
+        }
+      },
+      "CategoryAttribute": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "tenantId",
+          "organizationId",
+          "categoryId",
+          "attributeId",
+          "attributeRole",
+          "required",
+          "searchable",
+          "filterable",
+          "comparable",
+          "sortOrder",
+          "status",
+          "createdAt",
+          "version",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Primary key of the binding."
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Tenant that owns the binding. Always the calling scope."
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Organization scope of the binding. `0` is the tenant-wide sentinel."
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Category the attribute is bound to."
+          },
+          "attributeId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Attribute bound to the category."
+          },
+          "attributeRole": {
+            "type": "string",
+            "enum": [
+              "key",
+              "sales",
+              "parameter"
+            ],
+            "description": "Role of the attribute inside this category. ck_commerce_product_category_attribute_role is the authority for this set."
+          },
+          "sourceCategoryId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Category the binding was inherited from, when it was not authored directly on `categoryId`. Never equal to `categoryId` (ck_commerce_product_category_attribute_source_not_self)."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether a product in this category must carry the attribute."
+          },
+          "searchable": {
+            "type": "boolean",
+            "description": "Whether the attribute contributes to free-text search."
+          },
+          "filterable": {
+            "type": "boolean",
+            "description": "Whether product lists may filter on the attribute."
+          },
+          "comparable": {
+            "type": "boolean",
+            "description": "Whether the attribute may be used to compare products."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Display ordering key among the category bindings, ascending."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Shared lifecycle vocabulary. The authority for this set is the column CHECK constraint named in the field description."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Row creation time."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last write time."
+          },
+          "version": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Row version, advanced by every write to this row and by any write that rewrites the row's own storage identity (a category move also advances the moved subtree). It is the value an update or delete must send back as `If-Match`, and the same number the response's `ETag` carries, so a client that has read a resource can always name the version it read. `API_SPEC` section 17 keeps the version source, the required header, and the two result codes together: a missing `If-Match` answers `42801`, a stale one answers `41201`."
+          }
+        }
+      },
+      "PriceList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "tenantId",
+          "organizationId",
+          "priceListNo",
+          "name",
+          "currencyCode",
+          "status",
+          "createdAt",
+          "version",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Primary key."
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Tenant that owns the price list. Always the calling scope."
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Organization scope of the price list. `0` is the tenant-wide sentinel."
+          },
+          "priceListNo": {
+            "type": "string",
+            "description": "Stable business key of the price list, unique per tenant while the row is live."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name. Bounded by ck_commerce_price_list_name_length."
+          },
+          "currencyCode": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{3,8}$",
+            "description": "ISO 4217 code every amount in this price list is stated in."
+          },
+          "marketCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Market the price list targets, when it is market-scoped."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Shared lifecycle vocabulary. The authority for this set is the column CHECK constraint named in the field description."
+          },
+          "startsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Window start. `endsAt` must be after `startsAt` when both are set (ck_commerce_price_list_window)."
+          },
+          "endsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Window end."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Row creation time."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last write time."
+          },
+          "version": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Row version, advanced by every write to this row and by any write that rewrites the row's own storage identity (a category move also advances the moved subtree). It is the value an update or delete must send back as `If-Match`, and the same number the response's `ETag` carries, so a client that has read a resource can always name the version it read. `API_SPEC` section 17 keeps the version source, the required header, and the two result codes together: a missing `If-Match` answers `42801`, a stale one answers `41201`."
+          }
+        }
+      },
+      "Media": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "ownerType",
+          "ownerId",
+          "mediaRole",
+          "mediaResourceId",
+          "resourceSnapshot",
+          "sortOrder",
+          "status",
+          "createdAt",
+          "version",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Primary key of the attachment."
+          },
+          "ownerType": {
+            "type": "string",
+            "enum": [
+              "spu",
+              "sku",
+              "category",
+              "attribute_value"
+            ],
+            "description": "Kind of row the attachment hangs off. The values are the storage vocabulary the `ck_commerce_product_media_owner_type` CHECK accepts; this surface calls the `spu` owner a *product* everywhere else (`/catalog/products/{productId}`), but the filter value stays `spu`."
+          },
+          "ownerId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Id of the owning row, in the vocabulary `ownerType` names."
+          },
+          "mediaRole": {
+            "type": "string",
+            "enum": [
+              "main_image",
+              "gallery_image",
+              "detail_image",
+              "sku_image",
+              "video",
+              "manual",
+              "certificate"
+            ],
+            "description": "Role the resource plays on this owner. MEDIA_RESOURCE_SPEC section 5 fixes this set for the merchandise profile, and `ck_commerce_product_media_owner_role` narrows it for one owner kind: an `attribute_value` owner carries a swatch, so only `main_image`, `sku_image`, and `gallery_image` are accepted there. A role outside that subset is refused as a validation error, not by the column."
+          },
+          "mediaResourceId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Drive node id the attachment references. It always equals `resourceSnapshot.id`: both are written from the same request field, and the reference is derived from the snapshot rather than accepted alongside it."
+          },
+          "resourceSnapshot": {
+            "$ref": "#/components/schemas/MediaResource"
+          },
+          "altText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Attachment-level accessible description; null when the resource snapshot carries it."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Ordering rank within the owner-and-role slot."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Lifecycle status. ck_commerce_product_media_status is the authority for this set."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Row creation time."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last write time."
+          },
+          "version": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Row version, advanced by every write to this row and by any write that rewrites the row's own storage identity (a category move also advances the moved subtree). It is the value an update or delete must send back as `If-Match`, and the same number the response's `ETag` carries, so a client that has read a resource can always name the version it read. `API_SPEC` section 17 keeps the version source, the required header, and the two result codes together: a missing `If-Match` answers `42801`, a stale one answers `41201`."
+          }
+        }
+      },
+      "AttributeListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SdkWorkApiResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items",
+                  "pageInfo"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Attribute"
+                    }
+                  },
+                  "pageInfo": {
+                    "$ref": "#/components/schemas/PageInfo"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CategoryListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SdkWorkApiResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items",
+                  "pageInfo"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Category"
+                    }
+                  },
+                  "pageInfo": {
+                    "$ref": "#/components/schemas/PageInfo"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CategoryAttributeListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SdkWorkApiResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items",
+                  "pageInfo"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CategoryAttribute"
+                    }
+                  },
+                  "pageInfo": {
+                    "$ref": "#/components/schemas/PageInfo"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "PriceListListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SdkWorkApiResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items",
+                  "pageInfo"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PriceList"
+                    }
+                  },
+                  "pageInfo": {
+                    "$ref": "#/components/schemas/PageInfo"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ProductListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SdkWorkApiResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items",
+                  "pageInfo"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Product"
+                    }
+                  },
+                  "pageInfo": {
+                    "$ref": "#/components/schemas/PageInfo"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SkuListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SdkWorkApiResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items",
+                  "pageInfo"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Sku"
+                    }
+                  },
+                  "pageInfo": {
+                    "$ref": "#/components/schemas/PageInfo"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MediaListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SdkWorkApiResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items",
+                  "pageInfo"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Media"
+                    }
+                  },
+                  "pageInfo": {
+                    "$ref": "#/components/schemas/PageInfo"
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "securitySchemes": {

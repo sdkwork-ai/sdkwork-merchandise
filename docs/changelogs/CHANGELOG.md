@@ -136,6 +136,273 @@
 - Removed the phantom request bodies from `products.publish` and `products.archive`.
   Both declared the opaque `CommerceOperationCommand` while the handler takes only the
   path id, so the documented body could never have had an effect.
+- Typed all eleven write request bodies. Each operation now references a named
+  component schema — `CreateCategoryRequest`, `UpdateCategoryRequest`,
+  `CreateProductRequest`, `UpdateProductRequest`, `CreateSkuRequest`,
+  `UpdateSkuRequest`, `CreateAttributeRequest`, `CreateCategoryAttributeRequest`,
+  `UpdateCategoryAttributeRequest`, `CreatePriceListRequest`,
+  `UpdatePriceListRequest` — with `additionalProperties: false`, camelCase property
+  names, an explicit `required` list, enums equal to the baseline CHECK set of the
+  column they feed, `maxLength` equal to both the Rust bound constant and the
+  baseline `char_length` bound, and `int64` properties declared as JSON strings with
+  `x-sdkwork-int64-string`. `CommerceOperationCommand`
+  (`{"type":"object","additionalProperties":true}`) is deleted: it named no request
+  field, so the generated SDK typed every write body as an unbounded bag and
+  `API_SPEC` section 13.6 could not be declared on the request side at all.
+- Moved money to minor units on the write path. `CreateSkuRequest` and
+  `UpdateSkuRequest` carry `salePriceMinor` and `listPriceMinor` as
+  `format: int64` strings with `x-sdkwork-money-unit: minor`, matching what the
+  response already emitted (`salePriceMinor`). `CreateProductSkuCommand` and
+  `UpdateProductSkuCommand` now carry `i64` minor units, so the repository's
+  major-to-minor conversion (`to_minor`) is gone; the currency's
+  `minor_unit_exponent` is still read, but only to snapshot the row's `price_scale`.
+  Registering a currency that the money kernel cannot use still fails there, because
+  the registry row is validated before its scale is trusted.
+- Closed the request bodies on the Rust side. Every write DTO carries
+  `serde(deny_unknown_fields)`, so a field the document does not declare is a `400`
+  instead of a value the adapter silently ignored — the exact failure mode an
+  `additionalProperties: false` contract is supposed to exclude.
+- Answered a rejected body with the platform problem envelope. Bare `axum::Json`
+  produced an unenveloped, uncorrelated `422` (plain text, no `traceId`) before the
+  handler ran. `CatalogJson` maps every extraction rejection onto the `400`
+  `ProblemDetail` the write operations already declare, so adding
+  `deny_unknown_fields` did not also publish a status code the contract does not list.
+- Bound the catalog's text fields at the command boundary:
+  `CATEGORY_NAME_MAX_CHARS` (200), `ATTRIBUTE_NAME_MAX_CHARS` (100),
+  `SPU_TITLE_MAX_CHARS` (300, the bound on the name derived from it), and
+  `PRICE_LIST_NO_MAX_CHARS` (200, likewise). An over-long value is now a `422` naming
+  the field instead of a `23514` raised mid-transaction inside PostgreSQL.
+- Renamed the SKU create body's parent field to `productId` and the product create
+  body's business key to `productNo`. The documented parameter, the URL path
+  (`/products/{productId}`), and the query filter were already `product`-spelled, so
+  the bodies were the last request-side place publishing the internal `spu` name.
+- Added `tests/static/api-request-body-closure.test.mjs`. It compares the authored
+  request schemas against the DTOs each route extracts, the domain commands those
+  DTOs feed, and the baseline: contract properties equal the DTO's fields in their
+  wire camelCase spelling, `required` equals the non-`Option` fields, each property's
+  JSON type matches the Rust field, every `enum` equals its column's CHECK set, every
+  `maxLength` equals its constant and that constant equals the SQL bound, and every
+  monetary field declares the minor unit and reaches an `i64` command field. Verified
+  non-vacuous by a nine-mutation battery — renaming a property, dropping a `required`
+  entry, widening an enum, loosening a length, switching a price to major units,
+  opening a closed body, resurrecting the shell schema, removing
+  `deny_unknown_fields`, and declaring an optional price as `Option<String>` instead
+  of `Option<i64>` — each of which turned exactly its own assertion red. The
+  mutations rewrite the parsed JSON object rather than the raw text, because the
+  export tool re-serialises the file and string anchors silently stop matching.
+- Added request-boundary unit tests in `sdkwork-merchandise-web-support`: a
+  documented body reaches the handler, an undeclared field is refused with
+  `application/problem+json` carrying `code: 40001` and a `traceId`, a JSON number
+  where the contract declares a string is refused, a missing required field is
+  refused, and the int64 string parser rejects a non-decimal value.
+- Extended `storage_vocabulary_is_accepted_by_the_baseline_check_constraints` to
+  `AttributeRole` against `commerce_product_category_attribute.attribute_role`. The
+  comparison is now scoped per table rather than per column name, because
+  `attribute_role` carries two different CHECK sets: the category attribute table
+  accepts `key`/`sales`/`parameter` while `commerce_product_spu_attribute` accepts
+  only `key`/`parameter`. Verified non-vacuous by loading the SPU-scoped list for the
+  category case, which fails with ``domain emits `sales`, baseline allows [key,
+  parameter]``, and by naming an unloaded table, which trips the guard.
+- Typed the response bodies. Added six resource schemas (`Category`, `Product`,
+  `Sku`, `Attribute`, `CategoryAttribute`, `PriceList`) and six named
+  `<Resource>ListResponse` schemas, and rewired all twenty operations that return a
+  body: the fourteen single-resource responses now publish `data.item` through the
+  `sdkwork-specs` `typedSdkWorkResourceResponse()` builder, and the six lists answer
+  with a `<Resource>ListResponse` wrapping the shared `PageInfo`. The naming follows
+  `API_SPEC` section 12 and the list shape follows `sdkwork-order`'s
+  `ShipmentListResponse`. No operation answers with the untyped
+  `SdkWorkResourceResponse` or `SdkWorkListResponse` any more; those components stay
+  declared because they are the specs-owned shared set.
+- Fixed six operations whose `201` declared no body while their handlers returned
+  `success_created_resource(...)`. The created resource is now declared, which is what
+  the wire had been carrying.
+- Renamed the response side's product vocabulary: `spuId` and `spuNo` became
+  `productId` and `productNo`, matching the request bodies, the
+  `/products/{productId}` path, and the list filters. `SpuResponse` and `map_spu`
+  became `ProductResponse` and `map_product`; the domain and the `spu_no` column keep
+  their names, and the single mapper does the translation.
+- Stopped sending two narrow integer fields as JSON numbers. `depth` and
+  `price_scale` are declared `format: int64`, and section 13.6 requires a decimal
+  string regardless of the column's width, so both now serialize through
+  `serde_int64`. The SKU row's field is published as `minorUnitExponent` because
+  `priceScale` is classified as money by the section 13.2 validator while the value is
+  a unit exponent.
+- Deleted an unreachable response family: `PriceListItemResponse`,
+  `map_price_list_item`, `CommerceCatalogStore::retrieve_sku_prices` and its
+  implementation, `RETRIEVE_SKU_PRICES_SQL`, `map_price_list_item_row`,
+  `PriceListItemRecord`, and `SkuPriceRetrieveQuery`. No handler ever called the
+  method, so nothing on the wire changes. `commerce_price_list_item` now has no code
+  path at all, which is recorded in the architecture notes.
+- Added `tests/static/api-response-body-closure.test.mjs`. It asserts that every 2xx
+  JSON body pins a resource, that each operation publishes the resource its own
+  handler maps, that resource properties equal the response struct's fields in
+  camelCase, that `required` is exactly the non-`Option` fields, that an `Option` is a
+  nullable union, that every Rust `i64` field carries a `serde_int64` serializer and is
+  declared a decimal int64 string with `x-sdkwork-int64-string` and
+  `x-sdkwork-rust-type`, that every enum equals its column's CHECK set, that monetary
+  fields declare the minor unit, that creates declare a body and deletes do not, and
+  that lists publish a typed array plus the standard page info. Verified non-vacuous by
+  an eleven-mutation battery.
+- Unified the catalog store port on the one the composition specification already
+  advertised. `CatalogRepositoryPort` is now asynchronous and is the only store port:
+  its twenty-five synchronous, never-implemented methods are replaced by the
+  thirty-two asynchronous ones the router actually called, `CommerceCatalogFuture` and
+  `CatalogOffsetPage` moved to `sdkwork-merchandise-service` with it, and
+  `CatalogOffsetPage::new` applies the pagination defaults so no adapter picks its own
+  page size. A synchronous port was an unsatisfiable contract rather than a strict one,
+  which is why nothing had ever implemented it.
+- Bound the port where the dependency direction allows it. The thirty-two forwarding
+  methods left `sdkwork-merchandise-web-support` and became
+  `impl CatalogRepositoryPort for PostgresCommerceCatalogStore` in a new
+  `crates/sdkwork-merchandise-repository-sqlx/src/postgres_catalog_port.rs`; the HTTP
+  adapter would have had to depend on the repository crate to name the type. The
+  adapter's dependency on `sdkwork-merchandise-repository-sqlx`, `sdkwork-database-id`
+  and `sqlx` is removed, and `CommerceCatalogStore`,
+  `backend_catalog_router_with_postgres_pool`, and `CatalogState`'s concrete store are
+  gone with it.
+- Moved repository construction to the composition root.
+  `MerchandiseServiceHost::catalog_repository()` builds the store from the process's
+  single pool and single id generator and hands it out as `Arc<dyn
+  CatalogRepositoryPort>`; the route crate now reads
+  `build_backend_catalog_router(host.catalog_repository())` and no longer names a pool,
+  a driver, or `sdkwork-database-sqlx`. The PostgreSQL-only invariant is enforced in
+  the host constructor, so a non-PostgreSQL pool fails startup instead of panicking
+  inside a request path.
+- Added `tests/static/catalog-port-implementation-closure.test.mjs` (eight assertions).
+  It asserts that no Rust crate provides a port without naming a target, that every
+  advertised target is an item the declaring crate really declares, that every trait
+  port has at least one real `impl` in `crates/`, that the catalog port is implemented
+  by the repository crate and nothing else, that no crate outside a composition root
+  depends on a concrete repository crate, that the HTTP adapter holds the port rather
+  than a driver type, and that `generated/composition.resolved.json` advertises exactly
+  the ports the specs declare. Verified non-vacuous by an eight-mutation battery; the
+  gate strips Rust comments before searching because the service crate's own
+  documentation quotes the `impl` it looks for, and a raw-text scan stayed green with
+  the real binding commented out.
+- Regenerated `generated/composition.resolved.json`, which still listed the deleted
+  `backend_catalog_router_with_postgres_pool` entry point.
+- Added the product media surface, which is the first code path onto
+  `commerce_product_media`. Four operations — `media.list`, `media.create`,
+  `media.update`, `media.delete` — are served from a flat `/catalog/media` collection
+  addressed by an `(ownerType, ownerId)` pair rather than four nested
+  `/products/{id}/media`-shaped routes, because the baseline lets one attachment hang off
+  `spu`, `sku`, `category`, or `attribute_value` and the pair is what
+  `uk_commerce_product_media_slot` is already keyed on. Storage is a reference plus a
+  read-model projection (`media_resource_id` + `resource_snapshot`), never a URL:
+  `MEDIA_RESOURCE_SPEC` section 5 forbids a presigned URL becoming the system of record,
+  so there is no `url` column and no `imageUrl` field. `media_resource_id` is *derived*
+  from the snapshot's `id` by `validation::media_resource_identity`, which the repository
+  calls inside the write transaction, so the reference and the projection cannot describe
+  different files. The polymorphic owner has no foreign key — PostgreSQL cannot express
+  "this BIGINT points at one of four tables" — so the owner is verified per kind inside
+  the same transaction, and the role/owner-kind pair is re-checked against the row's
+  *stored* owner under `FOR UPDATE` on update.
+- Added the SKU variant axis as a request input. `attributeValueIds` on the SKU create
+  and update bodies carries dictionary value ids; the attribute behind each value is
+  derived server-side, the resolved set must cover the product category's active `sales`
+  axes exactly once, and the `variant_signature` is recomputed as `attributeNo=valueCode`
+  terms ordered by `attributeNo` and joined with `;`. The signature uses business keys
+  rather than snowflakes deliberately: an id-based signature changes when a tenant
+  re-creates an attribute, which would let the same logical variant exist twice and
+  silently defeat `uk_commerce_product_sku_variant`. This closes the open item that said
+  two colourways could not be distinguished by signature.
+- Added `MediaResource` to the authored contract as a single shared component with all 22
+  standard keys, `required: [id, kind, source]`, and `additionalProperties: false`. `id` is
+  required on this surface because `commerce_product_media.media_resource_id` is
+  `BIGINT NOT NULL`; `bucketId`-style object keys stay refused rather than dropped, per
+  `MEDIA_RESOURCE_SPEC` section 3.
+- Corrected the HTTP status mapping for typed commerce failures.
+  `catalog_system_response` answered every service error as `503 DependencyUnavailable`,
+  including the validation and not-found failures the contract declares as `400` and `404`.
+  It is now `catalog_error_response` and maps `Validation` to `400`, `NotFound` to `404`,
+  `Conflict`/`Locked`/`InvalidState`/`InsufficientBalance` to `409`, and the rest to `503`.
+- Added `tests/contract/catalog-table-coverage.test.mjs`. It partitions the seventeen
+  baseline tables into those a non-comment source file reaches and those listed with the
+  decision they are waiting on, asserts the partition is exact in both directions,
+  asserts the list's size, requires each reason to name the work rather than restate the
+  gap, and requires every recorded gap to also appear in `TECH_ARCHITECTURE.md` section 9.
+  Seven tables are recorded: the five `*_translation` tables (localization is an
+  unimplemented feature, not a schema question), `commerce_product_spu_attribute` (a
+  missing write path for a feature the schema already models, so product specification
+  data cannot be recorded), and `commerce_price_list_item` (a design decision — per-SKU
+  list prices may be owed, or the table may be redundant next to
+  `commerce_product_sku.sale_price_minor`). Seeds are deliberately not counted as a code
+  path, which is what keeps `commerce_price_list_item` visible: a bootstrap seed writes it
+  and nothing else does. Verified non-vacuous by an eight-mutation battery, including the
+  control that a comment naming a table is not evidence of a code path.
+- Extended the two body-closure gates for the media surface rather than exempting it. The
+  response gate gained `SHARED_COMPONENT_SCHEMAS` — an explicit, reasoned list of
+  component schemas that are models rather than published resources, so the one-to-one
+  resource-to-`*Response` mapping stays exact instead of being loosened — and a rule that
+  an opaque `serde_json::Value` field must point at a declared, closed schema. The request
+  gate gained the reverse rule: `MediaResource`'s properties, `required`, and closedness
+  are compared, in both directions, against `MEDIA_RESOURCE_REQUIRED_KEYS` and
+  `MEDIA_RESOURCE_OPTIONAL_KEYS` read back out of `validation/mod.rs`. The nested SKU axis
+  read model is named `SkuAxisView` rather than `SkuAxisResponse` because the `Response`
+  suffix means "the one struct per published resource" to the response gate, and this type
+  is published inside `Sku`, not as a resource of its own. Nineteen mutations across the
+  three gates and the service tests were injected; every verdict matched, and the results
+  are recorded in each gate's header.
+- Added `tests/contract/catalog-variant-signature-closure.test.mjs`. The `variant_signature`
+  convention is shared by three things that cannot see each other — the repository builder,
+  the baseline seed's reference rows, and the `uk_commerce_product_sku_variant` unique index
+  that compares them — and only the first of those was checked, so a hand-edited seed row or
+  a dictionary entry renamed without updating the SKUs that reference it would have gone
+  unnoticed. The gate parses the seed's own `INSERT`s and recomputes each SKU's signature
+  from its axis rows, comparing the result with what the row stores; it deliberately
+  recomputes rather than re-lists, so the assertion can disagree with the seed. It also
+  asserts the partial unique index over `(tenant_id, attribute_no)`, because ordering by
+  `attribute_no` is only a total order while that index holds — otherwise the signature's
+  determinism would silently depend on the repository's `attribute_id` tie-break. Two
+  corrections came out of writing it. The signature parser's first draft treated any `)` as
+  the end of a `VALUES` tuple, which the `NOW()` in every timestamp column turned into a
+  one-value row; it now tracks parenthesis depth. And `build_variant_signature` was sorting
+  its axes but relying on `attribute_no` ordering being handed to it, which the Rust unit
+  tests and this gate now both hold it to. Verified non-vacuous by five probes: three that
+  redden (a changed `value_code`, a hand-edited stored signature, the two axes exchanging
+  their `attribute_no`, which moves only the order) and one that must stay green (the axes
+  exchanging their `sort_order`, an ordering key the convention has to ignore), plus the
+  narrowed-index probe.
+- Made the row `version` the precondition for every write to an existing row, closing the
+  gap the column audit left open: `version` was bumped by nine of thirteen writers and
+  compared by none, so two concurrent editors both succeeded and the second silently
+  overwrote the first. All thirteen UPDATE/DELETE statements now carry `AND version = $n` in
+  their `WHERE` and `version = version + 1` in their `SET`; the seven resource schemas and
+  their Rust response structs publish `version` as a required, int64-string field; `If-Match`
+  is required on the thirteen non-create mutators (`42801` when absent, `41201` when stale);
+  and every success that carries a resource — the eight writes and
+  `GET /catalog/products/{productId}` — publishes the version as `ETag` as well as in the
+  body. The comparison lives **inside** the statement that writes rather than beside it, and
+  that choice is what makes the property checkable without a database: `AND version = $n` is
+  a fact about statement text, so a static gate can hold all thirteen to it in CI, where the
+  workspace runs no PostgreSQL. A `0`-row guarded result is classified by one follow-up read
+  against the row's own state, which turns the old single `404` for "no row matched" into the
+  right one of `404` (the row is gone) and `412` (it moved). Staleness travels on the port's
+  **success** channel, as `GuardedWrite::StaleVersion`, instead of as
+  `CommerceServiceError::conflict`: `API_SPEC` 2190 keeps a stale copy (`41201`) apart from a
+  domain conflict (`40901`), and these operations answer both, so recovering the distinction
+  by matching the error message would have been exactly the classification-by-string the
+  shared contract type forbids. `SdkWorkResultCode` already defines both protocol codes with
+  the right statuses, but `WebFrameworkErrorKind` has no variant for either and
+  `problem_response` derives both the status and the code from that kind alone — so rather
+  than widen a shared crate outside this module's ownership, the two responses are built from
+  `SdkWorkProblemDetail` directly in `http_envelope.rs`. The bridge is four lines and is
+  marked as one. Two statements deliberately advance no version, with reasons recorded at the
+  statements: `REPOINT_CATEGORY_PARENT_SQL` and `UPDATE_SKU_VARIANT_SIGNATURE_SQL` write other
+  columns of the row their guarded statement rewrites later in the same transaction, so
+  advancing there would move the version out from under the guard and make every reparenting
+  update answer `412` against the version the caller read one statement earlier. Cascades and
+  materialised-path rewrites (`SOFT_DELETE_SPU_SKUS_SQL`, `MOVE_CATEGORY_SUBTREE_SQL`,
+  `REFRESH_CATEGORY_LEAF_SQL`) advance the rows they touch but carry no guard — none of those
+  rows is a caller's `If-Match` target, and a retired SKU or a moved descendant still has to
+  look different to whoever read it. Verified by
+  `tests/static/api-precondition-closure.test.mjs`, which reads the router's own `.route(...)`
+  calls to tie each operation to its handler, reads each handler's span to learn whether it
+  reads the header, compares both against the contract's declared parameter in both
+  directions, and then reads the thirteen SQL statements. Its fourteenth mutation row is the
+  one that carries the round: it is the only check that would notice a fourteenth guarded
+  operation appearing in one layer and not the other two. Fourteen probes, every verdict as
+  specified, every file restored byte-identically.
 
 ## 2026-07-11
 

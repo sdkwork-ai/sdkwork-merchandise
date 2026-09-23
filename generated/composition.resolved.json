@@ -221,7 +221,6 @@
         "sdkDependencies": [],
         "routeManifest": null,
         "runtimeEntrypoints": [
-          "backend_catalog_router_with_postgres_pool",
           "build_backend_catalog_router"
         ],
         "dependencyApiSurfaces": []
@@ -355,7 +354,11 @@
           "packageName": "sdkwork-merchandise-repository-sqlx",
           "manifest": "crates/sdkwork-merchandise-repository-sqlx/Cargo.toml",
           "dependencies": [
+            "chrono",
             "sqlx",
+            "tracing",
+            "sdkwork-database-id",
+            "sdkwork-commerce-money",
             "sdkwork-contract-service",
             "sdkwork-merchandise-service",
             "tokio"
@@ -366,7 +369,13 @@
           "manifest": "crates/sdkwork-merchandise-service-host/Cargo.toml",
           "dependencies": [
             "sdkwork-merchandise-database-host",
-            "sdkwork-database-sqlx"
+            "sdkwork-merchandise-repository-sqlx",
+            "sdkwork-merchandise-service",
+            "sdkwork-database-id",
+            "sdkwork-database-sqlx",
+            "sdkwork-web-bootstrap",
+            "sdkwork-web-core",
+            "tracing"
           ]
         },
         {
@@ -385,14 +394,14 @@
             "axum",
             "serde",
             "serde-json",
-            "sqlx",
             "sdkwork-contract-service",
-            "sdkwork-merchandise-repository-sqlx",
             "sdkwork-merchandise-service",
             "sdkwork-iam-context-service",
             "sdkwork-web-core",
             "sdkwork-utils-rust",
-            "uuid"
+            "uuid",
+            "tokio",
+            "tower"
           ]
         },
         {
@@ -419,7 +428,7 @@
           "source": "sdks/_route-manifests/backend-api/sdkwork-routes-merchandise-backend-api.route-manifest.json",
           "packageName": "sdkwork-routes-merchandise-backend-api",
           "surface": "backend-api",
-          "routeCount": 27
+          "routeCount": 24
         }
       ]
     },

@@ -145,6 +145,30 @@ const HTTP_ROUTES: &[HttpRoute] = &[
         "merchandise",
         "priceLists.update",
     ),
+    HttpRoute::dual_token(
+        HttpMethod::Get,
+        "/backend/v3/api/catalog/media",
+        "merchandise",
+        "media.list",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Post,
+        "/backend/v3/api/catalog/media",
+        "merchandise",
+        "media.create",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Patch,
+        "/backend/v3/api/catalog/media/{mediaId}",
+        "merchandise",
+        "media.update",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Delete,
+        "/backend/v3/api/catalog/media/{mediaId}",
+        "merchandise",
+        "media.delete",
+    ),
 ];
 
 pub fn backend_route_manifest() -> HttpRouteManifest {

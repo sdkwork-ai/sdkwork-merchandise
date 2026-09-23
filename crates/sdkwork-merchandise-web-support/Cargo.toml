@@ -1,7 +1,7 @@
 [package]
 rust-version.workspace = true
 name = "sdkwork-merchandise-web-support"
-description = "Shared merchandise HTTP DTO, response, store-port, and backend adapter support."
+description = "Shared merchandise HTTP DTO, response, and backend adapter support."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,12 +18,13 @@ path = "src/lib.rs"
 axum = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { workspace = true }
 sdkwork_contract_service.workspace = true
-sdkwork-database-id = { workspace = true }
-sdkwork_merchandise_repository_sqlx.workspace = true
 sdkwork_merchandise_service.workspace = true
 sdkwork-iam-context-service.workspace = true
 sdkwork-web-core.workspace = true
 sdkwork-utils-rust.workspace = true
 uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tower = { workspace = true }

@@ -6,5 +6,6 @@
 //! capabilities and are deliberately absent here.
 
 pub mod postgres_catalog;
+mod postgres_catalog_port;
 
-pub use postgres_catalog::{unimplemented_operation, PostgresCommerceCatalogStore};
+pub use postgres_catalog::PostgresCommerceCatalogStore;

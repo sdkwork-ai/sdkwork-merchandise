@@ -541,6 +541,94 @@
       },
       "requestContext": "WebRequestContext",
       "apiSurface": "backend-api"
+    },
+    {
+      "method": "GET",
+      "path": "/backend/v3/api/catalog/media",
+      "operationId": "media.list",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.read"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/media"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
+    },
+    {
+      "method": "POST",
+      "path": "/backend/v3/api/catalog/media",
+      "operationId": "media.create",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.manage"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/media"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
+    },
+    {
+      "method": "PATCH",
+      "path": "/backend/v3/api/catalog/media/{mediaId}",
+      "operationId": "media.update",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.manage"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/media/{mediaId}"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
+    },
+    {
+      "method": "DELETE",
+      "path": "/backend/v3/api/catalog/media/{mediaId}",
+      "operationId": "media.delete",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.manage"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/media/{mediaId}"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
     }
   ]
 }
