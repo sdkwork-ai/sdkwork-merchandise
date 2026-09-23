@@ -886,6 +886,34 @@ impl PostgresCommerceCatalogStore {
         &self.pool
     }
 
+    /// The `commerce_currency` unit `code` names, validated by the money kernel.
+    ///
+    /// The catalog publishes money as an exact count of minor units (`API_SPEC` section 13.2.1), so
+    /// a caller that accepts a **major-denomination** string from its own consumers — a capability
+    /// whose contract speaks `"69.90"` rather than `6990` — has to place the decimal point before it
+    /// can submit a price. It must place it from the same registry row this repository validates
+    /// against, because `DATABASE_SPEC` section 14 requires the exponent to come from a single
+    /// registered currency table — `commerce_currency` here — and not from a per-table literal: a
+    /// hardcoded table agrees with the seed today and is wrong the moment the two disagree, and the
+    /// failure is silent — the row records one scale and the amount was parsed at another, so the
+    /// stored price reads back ten times too small.
+    ///
+    /// A whole unit rather than just `minor_unit_exponent`, because the caller does not get to
+    /// discard the half of the row the kernel validated: a unit assembled from a scale the caller
+    /// paired with a rounding mode it chose itself is only *mostly* read from the registry, and the
+    /// price it renders would be the one place a bad `rounding_mode` token stopped being reported.
+    /// The mode is inert on the paths that matter here — parsing a literal with more fractional
+    /// digits than the unit allows is refused rather than rounded, and placing a point rounds
+    /// nothing — but "inert today" is not a licence to invent the value.
+    ///
+    /// This is deliberately not on [`CatalogRepositoryPort`](sdkwork_merchandise_service::CatalogRepositoryPort):
+    /// it is not a catalog operation and the catalog never calls it. It is the currency registry the
+    /// catalog shares with whoever composes against it, which only an adapter at a composition root
+    /// needs.
+    pub async fn currency_unit(&self, code: &str) -> Result<MoneyUnit, CommerceServiceError> {
+        Ok(resolve_currency(&self.pool, code).await?.unit)
+    }
+
     /// Mints the next BIGINT primary key.
     fn next_id(&self) -> Result<i64, CommerceServiceError> {
         next_snowflake(&self.ids)
@@ -1989,7 +2017,7 @@ impl PostgresCommerceCatalogStore {
             .bind(&command.name)
             .bind(&command.title)
             .bind(&command.currency_code)
-            .bind(currency.scale)
+            .bind(currency.scale())
             .bind(list_price_minor)
             .bind(sale_price_minor)
             .bind(command.fulfillment_type.as_storage_str())
@@ -2147,7 +2175,7 @@ impl PostgresCommerceCatalogStore {
             .bind(sale_price_minor)
             .bind(list_price_minor)
             .bind(&effective_currency)
-            .bind(currency.scale)
+            .bind(currency.scale())
             .bind(command.fulfillment_type.map(|value| value.as_storage_str()))
             .bind(
                 command
@@ -2485,9 +2513,19 @@ async fn refresh_leaf_state(
 
 // ------------------------------------------------------------------ money + currency
 
-/// A currency row's `minor_unit_exponent`, which is what a money row snapshots as its `price_scale`.
+/// A resolved `commerce_currency` row, held as the unit the money kernel built from it.
+///
+/// The row's `minor_unit_exponent` is what a money row snapshots as its `price_scale`, and it is
+/// read back out of `unit` rather than kept beside it: one column has one carrier, here too.
 struct ResolvedCurrency {
-    scale: i16,
+    unit: MoneyUnit,
+}
+
+impl ResolvedCurrency {
+    /// The `SMALLINT` a price row carries, which is the unit's own scale.
+    fn scale(&self) -> i16 {
+        i16::from(self.unit.scale())
+    }
 }
 
 /// Reads the money scale and rounding of one active currency.
@@ -2525,11 +2563,11 @@ async fn resolve_currency(
     let scale_u8 = u8::try_from(scale).map_err(|_| {
         CommerceServiceError::validation(format!("currency `{code}` declares an unusable scale"))
     })?;
-    MoneyUnit::from_registry(code, scale_u8, &rounding).map_err(|error| {
+    let unit = MoneyUnit::from_registry(code, scale_u8, &rounding).map_err(|error| {
         CommerceServiceError::validation(format!("currency `{code}` is unusable: {error}"))
     })?;
 
-    Ok(ResolvedCurrency { scale })
+    Ok(ResolvedCurrency { unit })
 }
 
 async fn ensure_currency_exists(pool: &PgPool, code: &str) -> Result<(), CommerceServiceError> {
