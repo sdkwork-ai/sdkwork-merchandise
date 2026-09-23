@@ -4503,6 +4503,16 @@
             "pattern": "^-?[0-9]+$",
             "x-sdkwork-int64-string": true,
             "description": "Move the product to another category."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "inactive",
+              "archived"
+            ],
+            "description": "Lifecycle status. ck_commerce_product_spu_status admits these four, and salesStatus is derived from the value on every write. draft is a state to leave, not one to return to: ck_commerce_product_spu_published_at refuses status=draft once publishedAt is recorded, because publishing is a one-way transition. Retirement is a DELETE."
           }
         }
       },

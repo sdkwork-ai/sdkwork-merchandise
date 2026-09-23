@@ -404,6 +404,50 @@
   operation appearing in one layer and not the other two. Fourteen probes, every verdict as
   specified, every file restored byte-identically.
 
+- Made capability-owned SKU metadata a first-class carrier instead of a substitution into
+  `spec_json`. `commerce_product_sku.metadata` is `JSONB NOT NULL DEFAULT '{}'`, and
+  `CreateProductSkuCommand.metadata` / `UpdateProductSkuCommand.metadata` read and write it
+  verbatim, so a capability whose SKU carries fields the catalog has no column for — a notary
+  matter's `spec`, for instance — round-trips them without the catalog interpreting them. The
+  update side is three-state (`None` preserves, `Some({})` clears, `Some(value)` replaces), so a
+  price-only edit cannot erase another capability's fields. `spec_json` was a second name for the
+  same fact and it leaked: the old path stripped an `_sdkwork` envelope out of the value on every
+  read, which meant the catalog and the capability disagreed about what was stored.
+- Made two fields removable, because a two-state `Option` cannot say "clear this" and a
+  nullable column has no in-band empty value to say it with. `UpdateSkuRequest.listPriceMinor`
+  and `UpdateProductRequest.description` are now `["string", "null"]` on the wire and
+  `Option<Option<_>>` in Rust: an absent key preserves, an explicit `null` clears, a value
+  replaces. `UPDATE_SKU_SQL` was already close — it resolved the two collapsed states to "keep
+  the stored price" — and `UPDATE_SPU_SQL` now binds a boolean presence flag alongside the
+  stated text, because when both states arrive as `NULL`, `COALESCE` cannot tell them apart. The
+  request bodies decode through one `deserialize_present_option` rather than two hand-rolled
+  shims. Until this, a caller could restate a strike-through price or a description but never take
+  one away.
+- Made `commerce_product_spu.status` writable, which is what the SPU had been missing next to the
+  SKU. The reachable set was `draft` (only at insert), `active`, and `archived`, with `inactive`
+  reachable only from `delete` — which reaches it by also hiding the row. So no caller could state
+  "this product is inactive" without retiring it. `UpdateProductSpuCommand.status` accepts the same
+  four values the SKU already accepted, and `UPDATE_SPU_SQL` derives `sales_status` (and
+  `published_at`) from it in the same three lines `UPDATE_SKU_SQL` uses, so the two tables cannot
+  drift apart in what `active` means. `draft` is deliberately still unreachable after publication:
+  `ck_commerce_product_spu_published_at` is `published_at IS NULL OR status <> 'draft'` and nothing
+  clears `published_at`, which is the baseline's own note that publishing is a one-way transition.
+  The `23514` mapping in `store_error` now names the constraint it violated instead of reporting a
+  generic integrity failure, because the baseline states the model in CHECKs and the name of the
+  rule is the one thing a caller needs.
+- Added `tests/static/catalog-status-derivation-closure.test.mjs`, holding the two product tables
+  to one rule about being on sale: `sales_status` is never bound from the caller, the derivation in
+  `UPDATE_SPU_SQL` and `UPDATE_SKU_SQL` is the same expression once placeholders are normalized, a
+  statement that derives it from `$n` also assigns `status` from that same `$n`, a literal status
+  is one the baseline admits, both product inserts start a row `(draft, inactive)`, and no
+  statement clears `published_at`. Seven probes, every verdict as specified, every file restored
+  byte-identically. Its seventh row is why the first assertion does not skip a statement whose
+  status placeholder it cannot find: deleting `status = COALESCE($n::TEXT, status)` leaves the
+  derivation intact, and the narrower form of the assertion called that consistent while the write
+  ignored every status the caller sent. Corrected the gate counts in
+  `docs/architecture/tech/TECH_ARCHITECTURE.md` while adding this one — the request-body gate's
+  battery had grown from five probes to seven in the previous change and the tally was not updated
+  with it.
 ## 2026-07-11
 
 - Added the reusable `SingleSkuMerchandiseRepositoryPort` and service facade

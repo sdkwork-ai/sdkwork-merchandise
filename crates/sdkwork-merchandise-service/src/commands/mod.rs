@@ -122,6 +122,32 @@ pub struct UpdateProductSpuCommand {
     /// from it and is `NOT NULL` with a `char_length BETWEEN 1 AND 300` CHECK.
     pub description: Option<Option<String>>,
     pub category_id: Option<String>,
+    /// The product's lifecycle status, settable to any of the four values the SKU also accepts.
+    ///
+    /// The SPU and the SKU share one status vocabulary
+    /// (`commerce_product_spu.status` and `commerce_product_sku.status` carry the same CHECK), so a
+    /// caller that can move a SKU to `inactive` has to be able to move its product there too. It
+    /// could not: the reachable set used to be `draft` (only at insert), `active`, and `archived`,
+    /// and `delete` reached `inactive` only by also hiding the row. No caller could therefore state
+    /// "this product is inactive" without retiring it.
+    ///
+    /// `None` leaves the stored status alone; there is no third state because the column is
+    /// `NOT NULL` and an unset status is not a status.
+    ///
+    /// # `draft` is a state to leave, not one to return to
+    ///
+    /// `ck_commerce_product_spu_published_at` is `published_at IS NULL OR status <> 'draft'`, and
+    /// nothing clears `published_at` once a publish has recorded it — the baseline says as much:
+    /// "Publishing is a one-way transition with a recorded instant". So this field is genuinely
+    /// settable to `draft` only while the row has never been published; afterwards PostgreSQL
+    /// refuses it, and the SQL repository's `store_error` answers with that constraint's name rather
+    /// than a generic integrity message. The same rule binds the SKU through
+    /// `ck_commerce_product_sku_published_at`, so it is the model and not an asymmetry.
+    ///
+    /// `sales_status` is not a parameter: the repository derives it from this value on every write
+    /// (`active` if and only if `status = 'active'`), the same way `update_sku` does, because the
+    /// baseline only admits a sellable row whose own status is `active`.
+    pub status: Option<ProductStatus>,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
     ///
     /// A mismatch is not a malformed request: it means somebody else wrote the row since this

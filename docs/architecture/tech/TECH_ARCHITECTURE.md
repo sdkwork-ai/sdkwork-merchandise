@@ -574,33 +574,51 @@ cannot keep), that the internal cascades carry no caller precondition, and that 
 counts in all three layers agree. Assertion 12 is the one that matters most: a
 *fourteenth* guarded operation appearing in one layer and not the others is the failure
 this gate exists to catch, and nothing else in the workspace would see it.
+`tests/static/catalog-status-derivation-closure.test.mjs` holds the SPU and the SKU to one
+rule about what being on sale means. The two tables carry the same `status` and
+`sales_status` columns under the same three constraints, and the repository's statements
+now derive `sales_status` from the status they were handed — so two statements that agree
+today can disagree after one edit, in the one direction that matters: a filter on
+sales_status returning a set no caller expects. The gate reads the statements and asserts
+that `sales_status` is never bound from the caller, that the derivation in `UPDATE_SPU_SQL`
+and `UPDATE_SKU_SQL` is the same expression once placeholders are normalized, that a
+statement deriving it from `$n` also assigns `status` from that same `$n`, that a literal
+status is one the baseline CHECK admits, that both product inserts start a row
+`(draft, inactive)`, and that no statement ever clears `published_at` — which is what keeps
+"publishing is a one-way transition" a property of the code and not of a comment.
 
-Each of the six closure gates that carries a mutation battery was shown non-vacuous by
-it — forty-four probes in total, every verdict as specified, and every recorded file
+Each of the seven closure gates that carries a mutation battery was shown non-vacuous by
+it — fifty-three probes in total, every verdict as specified, and every recorded file
 restored byte-identically afterwards. The probes and the assertion each one reddens are
 listed in its own header: eight for the coverage gate, eight for the port gate, five for
-the variant-signature gate, five for the request-body gate, four for the response-body
-gate, and fourteen for the precondition gate. The two API gates rewrite the parsed
+the variant-signature gate, seven for the request-body gate, four for the response-body
+gate, fourteen for the precondition gate, and seven for the status-derivation gate. The two
+API gates rewrite the parsed
 document rather than its text, because the export tool re-serialises the file and string
 anchors stop matching; the port gate mutates the components, the manifests, and the
 committed resolution in turn.
 
-Three of those batteries changed the gate they were testing, which is the point of running
+Four of those batteries changed the gate they were testing, which is the point of running
 them rather than asserting non-vacuity. The coverage gate's battery is the reason two of
 its rules are shaped the way they are: a control row proved that a comment naming a table
 must not count as a code path, and a whole-document search for a gap table was satisfied by
 an aside in this file's own section 10, so the check now reads section 9 and stops at 9.1.
 The port gate's second row exists because its first draft read raw source: this crate's
 documentation quotes the very `impl` the gate looks for, so the gate stayed green with the
-real binding commented out — it now strips comments before searching. The variant-signature
-gate's fourth row is a probe whose verdict is *green* on purpose. The seed's two candidate
-ordering keys disagree about which axis comes first (`attribute_no` is `tier`/`period`,
-`sort_order` is 10/20), and the seed's stored signatures follow `attribute_no`; so moving
-`sort_order` must change nothing, and a gate that had keyed on it would have gone red
-there. Its third row is the mirror image, moving only the order while leaving the set of
-business keys intact. The precondition gate's header records the *observed* reddening, and
-two rows differ from the first draft of that table — the draft said the mutation that gives
-a create operation an `If-Match` reddens three assertions, and it reddens six. That is the
-gate behaving correctly rather than a correction to the gate: a newly guarded operation is
-also a newly undeclared `412`/`428` pair and a newly undocumented version source, so one
-mistake in one layer is caught by every layer that was not updated with it.
+real binding commented out — it now strips comments before searching. The status-derivation
+gate's seventh row is the reason its first assertion does not skip a statement it finds no
+status placeholder in: deleting `status = COALESCE($n::TEXT, status)` leaves the derivation
+behind, and the "if a status is bound, the derivation uses it" form of that assertion called
+the result consistent while the write ignored every status the caller sent. The
+variant-signature gate's fourth row is a probe whose verdict is *green* on purpose. The
+seed's two candidate ordering keys disagree about which axis comes first (`attribute_no` is
+`tier`/`period`, `sort_order` is 10/20), and the seed's stored signatures follow
+`attribute_no`; so moving `sort_order` must change nothing, and a gate that had keyed on it
+would have gone red there. Its third row is the mirror image, moving only the order while
+leaving the set of business keys intact. The precondition gate's header records the
+*observed* reddening, and two rows differ from the first draft of that table — the draft
+said the mutation that gives a create operation an `If-Match` reddens three assertions, and
+it reddens six. That is the gate behaving correctly rather than a correction to the gate: a
+newly guarded operation is also a newly undeclared `412`/`428` pair and a newly undocumented
+version source, so one mistake in one layer is caught by every layer that was not updated
+with it.

@@ -459,6 +459,12 @@ async fn backend_update_product(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    // Decoded here rather than in the repository so an unknown token is a named `422` naming the
+    // field, instead of surfacing as a CHECK violation from PostgreSQL with no vocabulary in it.
+    let status = match body.status.as_deref() {
+        Some(raw) => Some(parse_or_422!(ProductStatus::from_storage_str(raw))),
+        None => None,
+    };
     let command = UpdateProductSpuCommand {
         tenant_id: subject.tenant_id,
         expected_version,
@@ -467,6 +473,7 @@ async fn backend_update_product(
         subtitle: body.subtitle,
         description: body.description,
         category_id: body.category_id,
+        status,
     };
     match command.validate() {
         Ok(()) => {}

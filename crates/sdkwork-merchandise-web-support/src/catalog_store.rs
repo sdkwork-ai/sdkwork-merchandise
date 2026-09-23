@@ -267,6 +267,9 @@ pub struct UpdateSpuBody {
     #[serde(default, deserialize_with = "deserialize_present_option")]
     pub description: Option<Option<String>>,
     pub category_id: Option<String>,
+    /// Lifecycle status as a storage token. The handler decodes it through `ProductStatus`, so an
+    /// unknown token is a named `422` at the boundary rather than a `23514` from the CHECK.
+    pub status: Option<String>,
 }
 
 /// Create-SKU body.

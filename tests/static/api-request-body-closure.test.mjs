@@ -319,6 +319,12 @@ const ENUM_BINDINGS = [
     column: "status",
   },
   {
+    schema: "UpdateProductRequest",
+    property: "status",
+    table: "commerce_product_spu",
+    column: "status",
+  },
+  {
     schema: "CreateCategoryAttributeRequest",
     property: "role",
     table: "commerce_product_category_attribute",

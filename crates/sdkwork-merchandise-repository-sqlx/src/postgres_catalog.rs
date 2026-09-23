@@ -53,8 +53,8 @@ use sdkwork_merchandise_service::{
     DeleteMediaCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, GuardedWrite,
     LifecycleStatus, MediaListQuery, MediaOwnerType, MediaRecord, PriceListListQuery,
     PriceListRecord, ProductSkuListQuery, ProductSkuRetrieveQuery, ProductSpuListQuery,
-    ProductSpuRetrieveQuery, PublishSpuCommand, SkuAxisRecord, SkuRecord, SpuRecord, StaleVersion,
-    UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
+    ProductSpuRetrieveQuery, ProductStatus, PublishSpuCommand, SkuAxisRecord, SkuRecord, SpuRecord,
+    StaleVersion, UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
     UpdatePriceListCommand, UpdateProductSkuCommand, UpdateProductSpuCommand,
 };
 use serde_json::Value;
@@ -481,6 +481,12 @@ const INSERT_SPU_SQL: &str = concat!(
 /// cleared description and an unmentioned one as the same `NULL` and keep the stored text in both
 /// cases, which is exactly the edit the field gained its third state to allow. `title` and `subtitle`
 /// stay `COALESCE`d: `name` is `NOT NULL` and derived from `title`, so neither can be cleared.
+///
+/// `status` is settable outright, and `sales_status`/`published_at` are derived from it in the same
+/// statement rather than passed in — the same three lines `UPDATE_SKU_SQL` uses, so the two tables
+/// cannot drift apart in what "active" means. `COALESCE($6::TEXT, status)` reads the row's *old*
+/// status in both places, which is what makes "did not mention it" leave the derived columns exactly
+/// where they were instead of re-deriving them at the wrong moment.
 const UPDATE_SPU_SQL: &str = concat!(
     "UPDATE commerce_product_spu
      SET title = COALESCE($1::TEXT, title),
@@ -488,9 +494,15 @@ const UPDATE_SPU_SQL: &str = concat!(
          subtitle = COALESCE($2::TEXT, subtitle),
          description = CASE WHEN $3::BOOLEAN THEN $4::TEXT ELSE description END,
          category_id = COALESCE($5, category_id),
+         status = COALESCE($6::TEXT, status),
+         sales_status = CASE WHEN COALESCE($6::TEXT, status) = 'active' THEN 'active'
+                             ELSE 'inactive' END,
+         published_at = CASE WHEN COALESCE($6::TEXT, status) = 'active'
+                             THEN COALESCE(published_at, NOW())
+                             ELSE published_at END,
          version = version + 1,
          updated_at = NOW()
-     WHERE tenant_id = $6 AND id = $7 AND deleted_at IS NULL AND version = $8
+     WHERE tenant_id = $7 AND id = $8 AND deleted_at IS NULL AND version = $9
      RETURNING ",
     spu_columns!()
 );
@@ -1670,6 +1682,7 @@ impl PostgresCommerceCatalogStore {
                 "category_id",
                 command.category_id.as_deref(),
             )?)
+            .bind(command.status.map(ProductStatus::as_storage_str))
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
@@ -3144,9 +3157,15 @@ fn store_error(context: &str, error: sqlx::Error) -> CommerceServiceError {
                 ))
             }
             Some("23514") => {
-                return CommerceServiceError::validation(format!(
-                    "{context}: the request violates a catalog integrity rule"
-                ))
+                // The constraint name is the rule, not an implementation detail: the baseline states
+                // the model in CHECKs (`ck_commerce_product_spu_published_at` says publishing is a
+                // one-way transition), so a caller that broke one is owed its name. Without it every
+                // integrity refusal reads the same, and the one thing the caller needs — which rule —
+                // is the one thing missing.
+                return CommerceServiceError::validation(match database.constraint() {
+                    Some(constraint) => format!("{context}: violates {constraint}"),
+                    None => format!("{context}: the request violates a catalog integrity rule"),
+                });
             }
             Some("23503") => {
                 return CommerceServiceError::validation(format!(
