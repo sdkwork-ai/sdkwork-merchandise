@@ -252,12 +252,20 @@ pub struct CreateSpuBody {
     pub category_id: String,
 }
 
+/// Update-SPU body.
+///
+/// `description` carries the same three states as `listPriceMinor` in the update-SKU body, for the
+/// same reason: `commerce_product_spu.description` is a nullable column, so `NULL` is how a product
+/// is stored with no description, and an omitted field must not be read as a request to clear it. It
+/// decodes through [`deserialize_present_option`], so an explicit JSON `null` arrives as `Some(None)`
+/// and a stated string as `Some(Some(text))`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateSpuBody {
     pub title: Option<String>,
     pub subtitle: Option<String>,
-    pub description: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub description: Option<Option<String>>,
     pub category_id: Option<String>,
 }
 
@@ -310,9 +318,11 @@ struct UpdateSkuBody {
 
 /// Distinguishes an absent JSON key from an explicit `null` on a nullable body field.
 ///
-/// `Option<T>`'s own `Deserialize` maps both to `None`, and for `listPriceMinor` that collapse is
-/// the whole defect: absent means "leave the stored reference price alone" while `null` means "this
-/// product no longer has one". Wrapping the field in a second `Option` and marking it `default`
+/// `Option<T>`'s own `Deserialize` maps both to `None`, and for a three-state field that collapse is
+/// the whole defect: absent means "leave the stored value alone" while `null` means "this product no
+/// longer has one". Both `listPriceMinor` and `description` need the distinction, because neither an
+/// integer nor a nullable text column has an in-band empty value to carry "clear" instead. Wrapping
+/// the field in a second `Option` and marking it `default`
 /// restores the missing state — `default` supplies the outer `None` when the key is absent, and
 /// this function supplies `Some` whenever the key is present, so a present `null` arrives as
 /// `Some(None)` and a present value as `Some(Some(value))`.
@@ -740,15 +750,21 @@ fn map_category_attribute(value: CategoryAttributeRecord) -> CategoryAttributeRe
 
 #[cfg(test)]
 mod tests {
-    //! Pins the one thing the `listPriceMinor` change is entirely about: the difference between a
-    //! key that was **absent** and a key that was **`null`**. Every other property of the update body
-    //! is visible in its type; this one is exactly what a single `Option` erases, so it is asserted
-    //! at the decoder rather than described in a comment.
+    //! Pins the one thing the three-state fields are entirely about: the difference between a key that
+    //! was **absent** and a key that was **`null`**. Every other property of an update body is visible
+    //! in its type; this one is exactly what a single `Option` erases, so it is asserted at the decoder
+    //! rather than described in a comment. `description` on the update-SPU body is asserted here too:
+    //! it is the same defect on a nullable-text column, where the in-band trick that spares
+    //! `attribute_value_ids` (an empty list) does not exist.
 
-    use super::UpdateSkuBody;
+    use super::{UpdateSkuBody, UpdateSpuBody};
 
     fn decode(payload: &str) -> UpdateSkuBody {
         serde_json::from_str(payload).expect("the update body must decode")
+    }
+
+    fn decode_spu(payload: &str) -> UpdateSpuBody {
+        serde_json::from_str(payload).expect("the update-SPU body must decode")
     }
 
     #[test]
@@ -782,6 +798,40 @@ mod tests {
             Some(Some("12900".to_owned())),
             "a restated price must reach the handler as the decimal string API_SPEC section 13.6 \
              requires, not as a JSON number a browser may have rounded"
+        );
+    }
+
+    #[test]
+    fn an_omitted_description_is_not_a_clearing_write() {
+        let body = decode_spu(r#"{"title":"Amended"}"#);
+
+        assert_eq!(
+            body.description, None,
+            "a title-only edit must not read as 'remove the product description'; both are `None` to \
+             a single-Option decoder, which is the whole reason this field is three-state"
+        );
+    }
+
+    #[test]
+    fn an_explicit_null_description_is_a_clearing_write() {
+        let body = decode_spu(r#"{"description":null}"#);
+
+        assert_eq!(
+            body.description,
+            Some(None),
+            "an explicit null is the caller saying the product no longer has a description"
+        );
+    }
+
+    #[test]
+    fn a_stated_description_survives_verbatim() {
+        let body = decode_spu(r#"{"description":"Notarised on demand."}"#);
+
+        assert_eq!(
+            body.description,
+            Some(Some("Notarised on demand.".to_owned())),
+            "a restated description must reach the handler unchanged, including when it is the empty \
+             string, which is a stated description and not a clear"
         );
     }
 }

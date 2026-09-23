@@ -4491,8 +4491,11 @@
             "description": "New default-locale subtitle."
           },
           "description": {
-            "type": "string",
-            "description": "New default-locale description."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New default-locale description. Three-state on purpose: omitting the field leaves the stored text unchanged, an explicit `null` clears it, and a value replaces it. Clearing is stated rather than inferred because description is a nullable column — NULL is how a product is stored with no description, so an absent key must not be read as a request to remove one."
           },
           "categoryId": {
             "type": "string",

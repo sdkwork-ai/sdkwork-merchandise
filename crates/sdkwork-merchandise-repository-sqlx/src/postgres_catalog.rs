@@ -474,16 +474,23 @@ const INSERT_SPU_SQL: &str = concat!(
     spu_columns!()
 );
 
+/// Three-state `description`, two-state everything else.
+///
+/// `$3` says whether the caller mentioned the description at all and `$4` is what it said, because
+/// `commerce_product_spu.description` is nullable: `COALESCE($4::TEXT, description)` would read a
+/// cleared description and an unmentioned one as the same `NULL` and keep the stored text in both
+/// cases, which is exactly the edit the field gained its third state to allow. `title` and `subtitle`
+/// stay `COALESCE`d: `name` is `NOT NULL` and derived from `title`, so neither can be cleared.
 const UPDATE_SPU_SQL: &str = concat!(
     "UPDATE commerce_product_spu
      SET title = COALESCE($1::TEXT, title),
          name = COALESCE($1::TEXT, name),
          subtitle = COALESCE($2::TEXT, subtitle),
-         description = COALESCE($3::TEXT, description),
-         category_id = COALESCE($4, category_id),
+         description = CASE WHEN $3::BOOLEAN THEN $4::TEXT ELSE description END,
+         category_id = COALESCE($5, category_id),
          version = version + 1,
          updated_at = NOW()
-     WHERE tenant_id = $5 AND id = $6 AND deleted_at IS NULL AND version = $7
+     WHERE tenant_id = $6 AND id = $7 AND deleted_at IS NULL AND version = $8
      RETURNING ",
     spu_columns!()
 );
@@ -1645,10 +1652,20 @@ impl PostgresCommerceCatalogStore {
         let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
         let id = parse_id("spu_id", &command.spu_id)?;
 
+        // `description` binds twice on purpose: the boolean says whether the caller mentioned it, and
+        // the text is what they said. A `None` text behind a `true` flag is the clearing write, so it
+        // must reach PostgreSQL as `NULL` rather than as `sqlx`'s "no value bound here" — which is
+        // why the value is taken from the inner `Option` and not from `as_deref()` on the outer one.
+        let description = command
+            .description
+            .as_ref()
+            .and_then(|value| value.as_deref());
+
         let row = sqlx::query(UPDATE_SPU_SQL)
             .bind(command.title.as_deref())
             .bind(command.subtitle.as_deref())
-            .bind(command.description.as_deref())
+            .bind(command.description.is_some())
+            .bind(description)
             .bind(parse_optional_id(
                 "category_id",
                 command.category_id.as_deref(),

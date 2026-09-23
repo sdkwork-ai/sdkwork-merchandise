@@ -107,7 +107,20 @@ pub struct UpdateProductSpuCommand {
     pub spu_id: String,
     pub title: Option<String>,
     pub subtitle: Option<String>,
-    pub description: Option<String>,
+    /// The product description. Three-state: `None` leaves the stored text alone, `Some(None)` clears
+    /// it, and `Some(Some(text))` replaces it.
+    ///
+    /// Clearing is stated rather than inferred because `commerce_product_spu.description` is a
+    /// nullable column, so `NULL` **is** the absent description and there is no in-band empty value to
+    /// stand for it — unlike `metadata`, whose `{}` genuinely means "no metadata". Without the third
+    /// state, "this product no longer has a description" and "this edit did not mention the
+    /// description" would be one instruction, and the repository's `COALESCE` would resolve both to
+    /// "keep whatever is there".
+    ///
+    /// `subtitle` keeps its two states on purpose: nothing removes a subtitle, and a third state with
+    /// no consumer is speculation. `title` cannot need one — `commerce_product_spu.name` is derived
+    /// from it and is `NOT NULL` with a `char_length BETWEEN 1 AND 300` CHECK.
+    pub description: Option<Option<String>>,
     pub category_id: Option<String>,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
     ///
