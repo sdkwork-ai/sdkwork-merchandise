@@ -50,3 +50,7 @@ Thumbs.db
 # SDKWork local agent tool state (never commit)
 .workbuddy/
 **/.workbuddy/
+
+# --- SDKWork: gitignore completeness (2026-10-16) ---
+# Added by repo-commit task; targeted rules only, compliant with check-gitignore-standard
+__pycache__/
