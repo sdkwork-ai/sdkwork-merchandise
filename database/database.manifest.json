@@ -15,7 +15,7 @@
   "modules": [],
   "lifecycle": {
     "autoMigrate": false,
-    "seedOnBoot": false,
+    "seedOnBoot": true,
     "defaultSeedLocale": "zh-CN",
     "defaultSeedProfile": "standard",
     "supportedSeedLocales": [
