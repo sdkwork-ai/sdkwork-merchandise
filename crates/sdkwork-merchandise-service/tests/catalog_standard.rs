@@ -14,10 +14,11 @@
 //! vocabulary that no production path can reach.
 
 use sdkwork_merchandise_service::{
-    catalog_service_contract, AttributeRole, CatalogPortRequirement, CatalogRepositoryCommand,
-    CreateAttributeCommand, CreateCategoryCommand, CreateMediaCommand, CreateProductSkuCommand,
-    CreateProductSpuCommand, DeleteMediaCommand, FulfillmentType, InventoryTrackingMode,
-    LifecycleStatus, MediaOwnerType, MediaRole, ProductStatus, ProductType, UpdateMediaCommand,
+    catalog_service_contract, AttributeInputHint, AttributeRole, AttributeValueType,
+    CatalogPortRequirement, CatalogRepositoryCommand, CreateAttributeCommand,
+    CreateCategoryCommand, CreateMediaCommand, CreateProductSkuCommand, CreateProductSpuCommand,
+    DeleteMediaCommand, FulfillmentType, InventoryPolicy, InventoryTrackingMode, LifecycleStatus,
+    MediaOwnerType, MediaRole, ProductStatus, ProductType, UpdateMediaCommand,
     UpdateProductSkuCommand,
 };
 
@@ -25,6 +26,7 @@ const ROUTE_MANIFEST: &str =
     "../../sdks/_route-manifests/backend-api/sdkwork-routes-merchandise-backend-api.route-manifest.json";
 
 const TENANT_ID: &str = "100001";
+const ACTOR_ID: &str = "200001";
 const ORGANIZATION_ID: &str = "0";
 
 #[test]
@@ -108,6 +110,10 @@ fn catalog_repository_contract_exposes_required_commands() {
             CatalogRepositoryCommand::UpdateCategory,
             CatalogRepositoryCommand::DeleteCategory,
             CatalogRepositoryCommand::CreateAttribute,
+            CatalogRepositoryCommand::UpdateAttribute,
+            CatalogRepositoryCommand::CreateAttributeValue,
+            CatalogRepositoryCommand::UpdateAttributeValue,
+            CatalogRepositoryCommand::DeleteAttributeValue,
             CatalogRepositoryCommand::BindCategoryAttribute,
             CatalogRepositoryCommand::UpdateCategoryAttribute,
             CatalogRepositoryCommand::DeleteCategoryAttribute,
@@ -116,11 +122,15 @@ fn catalog_repository_contract_exposes_required_commands() {
             CatalogRepositoryCommand::DeleteSpu,
             CatalogRepositoryCommand::PublishSpu,
             CatalogRepositoryCommand::ArchiveSpu,
+            CatalogRepositoryCommand::ReplaceSpuAttributes,
             CatalogRepositoryCommand::CreateSku,
             CatalogRepositoryCommand::UpdateSku,
             CatalogRepositoryCommand::DeleteSku,
             CatalogRepositoryCommand::CreatePriceList,
             CatalogRepositoryCommand::UpdatePriceList,
+            CatalogRepositoryCommand::CreatePriceListItem,
+            CatalogRepositoryCommand::UpdatePriceListItem,
+            CatalogRepositoryCommand::DeletePriceListItem,
             CatalogRepositoryCommand::CreateMedia,
             CatalogRepositoryCommand::UpdateMedia,
             CatalogRepositoryCommand::DeleteMedia,
@@ -248,7 +258,8 @@ fn catalog_service_contract_exposes_domain_operations() {
 #[test]
 fn product_spu_command_owns_the_product_type_vocabulary() {
     let command = CreateProductSpuCommand {
-        tenant_id: TENANT_ID.to_owned(),
+
+    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
         organization_id: ORGANIZATION_ID.to_owned(),
         spu_no: "spu-membership-pro".to_owned(),
         title: "Pro membership".to_owned(),
@@ -256,6 +267,13 @@ fn product_spu_command_owns_the_product_type_vocabulary() {
         description: None,
         product_type: ProductType::Membership,
         category_id: "200001".to_owned(),
+        // Fixed-semantics fields are columns, not command-required: a command
+        // that declares none creates the same row the storage defaults produce.
+        model_no: None,
+        barcode: None,
+        weight_gram: None,
+        volume_ml: None,
+        tax_class_code: None,
     };
     assert!(command.validate().is_ok());
 
@@ -282,7 +300,8 @@ fn product_spu_command_owns_the_product_type_vocabulary() {
 #[test]
 fn product_sku_command_owns_the_fulfillment_and_inventory_vocabulary() {
     let command = CreateProductSkuCommand {
-        tenant_id: TENANT_ID.to_owned(),
+
+    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
         organization_id: ORGANIZATION_ID.to_owned(),
         spu_id: "300001".to_owned(),
         sku_no: "sku-membership-month-pro".to_owned(),
@@ -290,6 +309,13 @@ fn product_sku_command_owns_the_fulfillment_and_inventory_vocabulary() {
         title: "Monthly Pro membership".to_owned(),
         sale_price_minor: 6_990,
         list_price_minor: Some(12_900),
+        // An untracked SKU carries no cost or logistics figure and the storage
+        // default stock-out policy, which the baseline CHECK accepts on an
+        // untracked row.
+        cost_price_minor: None,
+        barcode: None,
+        weight_gram: None,
+        inventory_policy: InventoryPolicy::Deny,
         currency_code: "CNY".to_owned(),
         fulfillment_type: FulfillmentType::MembershipActivation,
         inventory_tracking: InventoryTrackingMode::Untracked,
@@ -352,12 +378,17 @@ fn product_sku_command_owns_the_fulfillment_and_inventory_vocabulary() {
 #[test]
 fn sku_update_keeps_the_reference_price_three_states_apart() {
     let update = |list_price_minor| UpdateProductSkuCommand {
-        tenant_id: TENANT_ID.to_owned(),
+
+    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
         sku_id: "400001".to_owned(),
         name: None,
         title: None,
         sale_price_minor: None,
         list_price_minor,
+        cost_price_minor: None,
+        barcode: None,
+        weight_gram: None,
+        inventory_policy: None,
         currency_code: None,
         fulfillment_type: None,
         inventory_tracking: None,
@@ -397,20 +428,28 @@ fn sku_update_keeps_the_reference_price_three_states_apart() {
 #[test]
 fn category_and_attribute_commands_own_their_write_vocabulary() {
     let category = CreateCategoryCommand {
-        tenant_id: TENANT_ID.to_owned(),
+
+    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
         organization_id: ORGANIZATION_ID.to_owned(),
         category_no: "cat-membership".to_owned(),
         parent_id: None,
+        back_parent_id: None,
         name: "Membership".to_owned(),
         sort_order: 100,
     };
     assert!(category.validate().is_ok());
 
     let attribute = CreateAttributeCommand {
-        tenant_id: TENANT_ID.to_owned(),
+
+    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
         organization_id: ORGANIZATION_ID.to_owned(),
         attribute_no: "attr-duration".to_owned(),
         name: "Duration".to_owned(),
+        value_type: AttributeValueType::Enum,
+        input_hint: AttributeInputHint::Select,
+        is_multi_value: false,
+        unit_symbol: None,
+        sort_order: 0,
         values: vec!["30 days".to_owned(), "365 days".to_owned()],
     };
     assert!(attribute.validate().is_ok());
@@ -427,9 +466,23 @@ fn category_and_attribute_commands_own_their_write_vocabulary() {
     blank.values = vec!["   ".to_owned()];
     assert!(blank.validate().is_err());
 
-    let mut over_long = attribute;
+    let mut over_long = attribute.clone();
     over_long.values = vec!["x".repeat(201)];
     assert!(over_long.validate().is_err());
+
+    // `ck_commerce_product_attribute_multi_value_needs_enum` refuses a multi-value flag on anything
+    // but an `enum`, and dictionary values on a free-text attribute are a category mistake.
+    let mut multi_text = attribute.clone();
+    multi_text.value_type = AttributeValueType::Text;
+    multi_text.input_hint = AttributeInputHint::Text;
+    multi_text.is_multi_value = true;
+    assert!(multi_text.validate().is_err());
+
+    let mut seeded_text = attribute;
+    seeded_text.value_type = AttributeValueType::Number;
+    seeded_text.input_hint = AttributeInputHint::Number;
+    seeded_text.unit_symbol = Some("g".to_owned());
+    assert!(seeded_text.validate().is_err());
 
     // `LifecycleStatus` is the shared two-value vocabulary; `deleted` is expressed by the
     // `deleted_at` soft-delete pair and has no storage form here.
@@ -808,6 +861,7 @@ fn media_commands_own_the_owner_role_pair_and_the_resource_identity() {
     }
     fn command(snapshot: serde_json::Value) -> CreateMediaCommand {
         CreateMediaCommand {
+            actor: ACTOR_ID.to_owned(),
             tenant_id: TENANT_ID.to_owned(),
             organization_id: ORGANIZATION_ID.to_owned(),
             owner_type: MediaOwnerType::Spu,
@@ -884,7 +938,8 @@ fn media_commands_own_the_owner_role_pair_and_the_resource_identity() {
     // An update re-checks the snapshot only when one is being written, and the owner kind is not a
     // field of it at all: the repository re-evaluates the pair against the row's stored owner.
     let untouched = UpdateMediaCommand {
-        tenant_id: TENANT_ID.to_owned(),
+
+    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
         // The version the caller read. `validate` does not judge it — it is not a property of the
         // payload — but the command carries it because the repository compares it against the row.
         expected_version: 3,
@@ -899,7 +954,8 @@ fn media_commands_own_the_owner_role_pair_and_the_resource_identity() {
     assert_eq!(untouched.media_resource_id(), Ok(None));
 
     let retargeted = UpdateMediaCommand {
-        media_id: "1800000000000000001".to_owned(),
+
+    actor: ACTOR_ID.to_owned(),        media_id: "1800000000000000001".to_owned(),
         sort_order: Some(-1),
         ..untouched
     };
@@ -909,6 +965,7 @@ fn media_commands_own_the_owner_role_pair_and_the_resource_identity() {
     );
 
     assert!(DeleteMediaCommand {
+        actor: ACTOR_ID.to_owned(),
         tenant_id: TENANT_ID.to_owned(),
         expected_version: 3,
         media_id: "1800000000000000001".to_owned(),

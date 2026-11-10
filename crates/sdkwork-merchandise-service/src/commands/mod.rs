@@ -2,25 +2,41 @@ use sdkwork_contract_service::CommerceServiceError;
 use serde_json::Value;
 
 use crate::domain::{
-    AttributeRole, FulfillmentType, InventoryTrackingMode, LifecycleStatus, MediaOwnerType,
-    MediaRole, ProductStatus, ProductType,
+    AttributeInputHint, AttributeRole, AttributeValueType, FulfillmentType, InventoryPolicy,
+    InventoryTrackingMode, LifecycleStatus, MediaOwnerType, MediaRole, ProductStatus, ProductType,
+    SpuAttributeRole,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateCategoryCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub organization_id: String,
     pub category_no: String,
     pub parent_id: Option<String>,
+    /// The category's position on the back-office tree, when the tenant keeps one.
+    ///
+    /// The two trees are independent: a category can sit in the merchandising tree only, the
+    /// back-office tree only, or both. The baseline constrains the column with a foreign key and a
+    /// self-reference refusal, so the repository lets PostgreSQL answer a missing parent or a
+    /// self-pointing id rather than pre-checking either.
+    pub back_parent_id: Option<String>,
     pub name: String,
     pub sort_order: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdateCategoryCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub category_id: String,
     pub parent_id: Option<String>,
+    /// Three-state: the back-tree position is removable without touching the front tree, and the
+    /// column is nullable, so an omitted key keeps the stored position while an explicit null
+    /// removes the category from the back-office tree.
+    pub back_parent_id: Option<Option<String>>,
     pub name: Option<String>,
     pub sort_order: Option<i64>,
     pub status: Option<LifecycleStatus>,
@@ -35,6 +51,8 @@ pub struct UpdateCategoryCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeleteCategoryCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub category_id: String,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
@@ -46,28 +64,199 @@ pub struct DeleteCategoryCommand {
     pub expected_version: i64,
 }
 
+/// Creates an attribute dictionary entry plus, for an `enum` attribute, its enumerated values.
+///
+/// `value_type` decides what the attribute accepts: an `enum` selects from the dictionary this
+/// command seeds, and `text`/`number`/`bool`/`date` accept typed free input — which is why those
+/// four must arrive with an empty `values` list. `is_multi_value` requires `enum` because a
+/// multi-valued attribute needs discrete options to be multi-valued *of*
+/// (`ck_commerce_product_attribute_multi_value_needs_enum`).
+///
+/// `value_type`, `input_hint`, and `is_multi_value` are **create-time facts** and have no update
+/// path: changing an attribute's type after values exist would strand every stored value that no
+/// longer fits, and the update command deliberately does not carry them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateAttributeCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub organization_id: String,
     pub attribute_no: String,
     pub name: String,
+    pub value_type: AttributeValueType,
+    pub input_hint: AttributeInputHint,
+    pub is_multi_value: bool,
+    pub unit_symbol: Option<String>,
+    pub sort_order: i64,
     pub values: Vec<String>,
+}
+
+/// Updates an attribute dictionary entry.
+///
+/// `name`, `unit_symbol`, `sort_order`, and `status` are the mutable surface; the type facts are
+/// create-time only (see [`CreateAttributeCommand`]). `unit_symbol` is three-state because the
+/// column is nullable: `None` leaves it alone, `Some(None)` clears it, `Some(Some(unit))` replaces
+/// it. Retiring an attribute is `status = inactive`; deletion is not offered, because live category
+/// bindings and SKU axes reference the row and a soft delete would strand them.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpdateAttributeCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
+    pub tenant_id: String,
+    pub attribute_id: String,
+    pub name: Option<String>,
+    /// The unit the attribute's values are denominated in (`cm`, `kg`). Three-state for the same
+    /// reason `description` on the update-SPU command is: the column is nullable, so an omitted
+    /// field and a stated removal are different instructions.
+    pub unit_symbol: Option<Option<String>>,
+    pub sort_order: Option<i64>,
+    pub status: Option<LifecycleStatus>,
+    /// The row version the caller read, taken from the request's `If-Match` precondition.
+    ///
+    /// A mismatch is not a malformed request: it means somebody else wrote the row since this
+    /// caller read it, so the caller's copy is stale and the write would silently discard their
+    /// change. The repository compares this against `version` inside the same statement that
+    /// writes, which is what makes the comparison race-free.
+    pub expected_version: i64,
+}
+
+/// Creates one dictionary value on an `enum` attribute.
+///
+/// `color_hex` and `media_resource_id` are the presentation metadata a console renders a colourway
+/// with (`color_hex` is the swatch, the media resource is its picture); both are optional and only
+/// meaningful for attributes whose values are displayed. The attribute itself must be an `enum` —
+/// a free-text attribute has no dictionary to extend — and the repository re-checks that inside the
+/// same transaction, because the command cannot see the attribute row.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateAttributeValueCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
+    pub tenant_id: String,
+    pub organization_id: String,
+    pub attribute_id: String,
+    pub value_code: String,
+    pub display_value: String,
+    /// The swatch colour, `#RRGGBB`. The baseline's
+    /// `ck_commerce_product_attribute_value_color_hex` enforces the same pattern.
+    pub color_hex: Option<String>,
+    /// The Drive resource id of the value's picture, as an int64 string.
+    pub media_resource_id: Option<String>,
+    pub sort_order: i64,
+}
+
+/// Updates one dictionary value.
+///
+/// `color_hex` and `media_resource_id` are three-state because both columns are nullable. The
+/// `attribute_id` and `value_code` pair is the row's business identity and is not mutable: moving a
+/// value to another attribute or renaming its key is a delete plus a create, not an edit.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpdateAttributeValueCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
+    pub tenant_id: String,
+    pub attribute_value_id: String,
+    pub display_value: Option<String>,
+    pub color_hex: Option<Option<String>>,
+    pub media_resource_id: Option<Option<String>>,
+    pub sort_order: Option<i64>,
+    pub status: Option<LifecycleStatus>,
+    /// The row version the caller read, taken from the request's `If-Match` precondition.
+    ///
+    /// A mismatch is not a malformed request: it means somebody else wrote the row since this
+    /// caller read it, so the caller's copy is stale and the write would silently discard their
+    /// change. The repository compares this against `version` inside the same statement that
+    /// writes, which is what makes the comparison race-free.
+    pub expected_version: i64,
+}
+
+/// Deletes one dictionary value.
+///
+/// The delete is a soft delete, but a value that a live SKU variant still sits on cannot be
+/// retired: the repository refuses while any live `commerce_product_sku_attribute` row references
+/// the value, because a variant whose axis value is gone is a variant the console can no longer
+/// render and the buyer can no longer select.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeleteAttributeValueCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
+    pub tenant_id: String,
+    pub attribute_value_id: String,
+    /// The row version the caller read, taken from the request's `If-Match` precondition.
+    ///
+    /// A mismatch is not a malformed request: it means somebody else wrote the row since this
+    /// caller read it, so the caller's copy is stale and the write would silently discard their
+    /// change. The repository compares this against `version` inside the same statement that
+    /// writes, which is what makes the comparison race-free.
+    pub expected_version: i64,
+}
+
+/// One entry of a product's key/parameter attribute set.
+///
+/// The value is carried by exactly one of two channels: `attribute_value_id` for an attribute whose
+/// value comes from the dictionary, or `raw_value` for the free-text spellings a dictionary does not
+/// hold (`ck_commerce_product_spu_attribute_carrier` refuses a row with neither or both). Which one
+/// is legitimate is a property of the attribute's `value_type`, which the repository reads from the
+/// dictionary row inside the same transaction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProductAttributeValueInput {
+    pub attribute_id: String,
+    pub role: SpuAttributeRole,
+    pub attribute_value_id: Option<String>,
+    pub raw_value: Option<String>,
+    pub sort_order: i64,
+}
+
+/// Replaces a product's whole key/parameter attribute set.
+///
+/// Replacement — not per-row patching — is the semantics because the set is small, is always
+/// rendered together on the product detail page, and a partial edit cannot express "this product no
+/// longer lists a warranty term". The replacement is guarded on the **SPU's** version: the set is
+/// part of the product aggregate, so two concurrent editors of one product must not both succeed,
+/// and the SPU row's version is bumped by the write to keep the next `If-Match` honest.
+///
+/// Every submitted attribute must be bound — active — in the product's category template with the
+/// same role: the template is what decides *what belongs on a product of this category*, and an
+/// attribute outside it is a specification no category declared.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReplaceProductAttributesCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
+    pub tenant_id: String,
+    pub spu_id: String,
+    pub attributes: Vec<ProductAttributeValueInput>,
+    /// The SPU row version the caller read, taken from the request's `If-Match` precondition.
+    ///
+    /// A mismatch is not a malformed request: it means somebody else wrote the row since this
+    /// caller read it, so the caller's copy is stale and the write would silently discard their
+    /// change. The repository compares this against `version` inside the same statement that
+    /// writes, which is what makes the comparison race-free.
+    pub expected_version: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreatePriceListCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub organization_id: String,
     pub price_list_no: String,
+    pub name: String,
     pub currency_code: String,
     pub market_code: Option<String>,
+    /// The B2B customer segment the list applies to, when it is segment-scoped.
+    pub customer_segment: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdatePriceListCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub price_list_id: String,
+    pub name: Option<String>,
+    /// Three-state: the column is nullable, so an omitted key keeps the stored segment while an
+    /// explicit null detaches the list from any segment.
+    pub customer_segment: Option<Option<String>>,
     pub status: Option<LifecycleStatus>,
     pub starts_at: Option<String>,
     pub ends_at: Option<String>,
@@ -91,6 +280,8 @@ pub struct UpdatePriceListCommand {
 /// `commerce_product_spu_translation`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateProductSpuCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub organization_id: String,
     pub spu_no: String,
@@ -99,10 +290,24 @@ pub struct CreateProductSpuCommand {
     pub description: Option<String>,
     pub product_type: ProductType,
     pub category_id: String,
+    /// The manufacturer's standard model number under the brand, when one is declared.
+    pub model_no: Option<String>,
+    /// The product-level barcode (GTIN/EAN), unique per tenant while the row is live
+    /// (uk_commerce_product_spu_tenant_barcode). GS1 mints GTINs globally; a multi-tenant SaaS
+    /// enforces uniqueness inside the tenant, which is the scope the baseline's index declares.
+    pub barcode: Option<String>,
+    /// Ship weight in grams, the figure logistics rates a shipment from.
+    pub weight_gram: Option<i64>,
+    /// Shipping volume in millilitres.
+    pub volume_ml: Option<i64>,
+    /// The tenant's tax-classification key for this product (`standard`, `reduced`, ...).
+    pub tax_class_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdateProductSpuCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub spu_id: String,
     pub title: Option<String>,
@@ -122,6 +327,18 @@ pub struct UpdateProductSpuCommand {
     /// from it and is `NOT NULL` with a `char_length BETWEEN 1 AND 300` CHECK.
     pub description: Option<Option<String>>,
     pub category_id: Option<String>,
+    /// The manufacturer's model number. Three-state: the column is nullable, so an omitted key
+    /// keeps the stored value and an explicit null removes it.
+    pub model_no: Option<Option<String>>,
+    /// The product-level barcode. Three-state for the same reason; a restated barcode must be
+    /// unique per tenant, which the baseline's partial unique index enforces.
+    pub barcode: Option<Option<String>>,
+    /// Ship weight in grams. Three-state.
+    pub weight_gram: Option<Option<i64>>,
+    /// Shipping volume in millilitres. Three-state.
+    pub volume_ml: Option<Option<i64>>,
+    /// The tenant's tax-classification key. Three-state.
+    pub tax_class_code: Option<Option<String>>,
     /// The product's lifecycle status, settable to any of the four values the SKU also accepts.
     ///
     /// The SPU and the SKU share one status vocabulary
@@ -159,6 +376,8 @@ pub struct UpdateProductSpuCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeleteProductSpuCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub spu_id: String,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
@@ -172,6 +391,8 @@ pub struct DeleteProductSpuCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishSpuCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub spu_id: String,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
@@ -185,6 +406,8 @@ pub struct PublishSpuCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArchiveSpuCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub spu_id: String,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
@@ -218,6 +441,8 @@ pub struct ArchiveSpuCommand {
 /// `sku_no` as the signature — see `docs/architecture/tech/TECH_ARCHITECTURE.md` section 3.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CreateProductSkuCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub organization_id: String,
     pub spu_id: String,
@@ -226,9 +451,20 @@ pub struct CreateProductSkuCommand {
     pub title: String,
     pub sale_price_minor: i64,
     pub list_price_minor: Option<i64>,
+    /// The cost of acquiring one unit, in the same minor unit. It is what a margin needs, and it
+    /// is deliberately a column rather than a price-list row: cost is not market-segmented.
+    pub cost_price_minor: Option<i64>,
+    /// The SKU-level barcode (GTIN/EAN), unique per tenant while the row is live.
+    pub barcode: Option<String>,
+    /// Ship weight in grams, the figure logistics rates a shipment from.
+    pub weight_gram: Option<i64>,
     pub currency_code: String,
     pub fulfillment_type: FulfillmentType,
     pub inventory_tracking: InventoryTrackingMode,
+    /// What happens when a tracked SKU's stock runs out. `backorder` requires
+    /// `inventory_tracking = quantity`, the pairing
+    /// `ck_commerce_product_sku_policy_requires_tracking` enforces in storage.
+    pub inventory_policy: InventoryPolicy,
     pub attribute_value_ids: Vec<String>,
     /// Capability-owned metadata for a SKU that sells a service rather than a physical good.
     ///
@@ -262,15 +498,28 @@ pub struct CreateProductSkuCommand {
 /// reads the row, so nothing has to be inferred from a sentinel amount.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UpdateProductSkuCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub sku_id: String,
     pub name: Option<String>,
     pub title: Option<String>,
     pub sale_price_minor: Option<i64>,
     pub list_price_minor: Option<Option<i64>>,
+    /// Three-state, like `list_price_minor`: the column is nullable, so an omitted key keeps the
+    /// stored cost and an explicit null removes it.
+    pub cost_price_minor: Option<Option<i64>>,
+    /// Three-state. A restated barcode must be unique per tenant.
+    pub barcode: Option<Option<String>>,
+    /// Three-state.
+    pub weight_gram: Option<Option<i64>>,
     pub currency_code: Option<String>,
     pub fulfillment_type: Option<FulfillmentType>,
     pub inventory_tracking: Option<InventoryTrackingMode>,
+    /// `backorder` requires the SKU to be (or become) quantity-tracked; the repository checks the
+    /// pairing against the *effective* values after the merge, because a command that only states
+    /// the policy cannot see the stored tracking mode.
+    pub inventory_policy: Option<InventoryPolicy>,
     pub status: Option<ProductStatus>,
     pub attribute_value_ids: Option<Vec<String>>,
     pub metadata: Option<Value>,
@@ -285,6 +534,8 @@ pub struct UpdateProductSkuCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeleteProductSkuCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub sku_id: String,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
@@ -312,6 +563,8 @@ pub struct DeleteProductSkuCommand {
 /// the owner exists for the declared kind instead of leaving an orphan row behind.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CreateMediaCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub organization_id: String,
     pub owner_type: MediaOwnerType,
@@ -332,6 +585,8 @@ pub struct CreateMediaCommand {
 /// kind on this operation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UpdateMediaCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub media_id: String,
     pub media_role: Option<MediaRole>,
@@ -350,8 +605,73 @@ pub struct UpdateMediaCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeleteMediaCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub media_id: String,
+    /// The row version the caller read, taken from the request's `If-Match` precondition.
+    ///
+    /// A mismatch is not a malformed request: it means somebody else wrote the row since this
+    /// caller read it, so the caller's copy is stale and the write would silently discard their
+    /// change. The repository compares this against `version` inside the same statement that
+    /// writes, which is what makes the comparison race-free.
+    pub expected_version: i64,
+}
+
+/// Creates one priced row of a price list.
+///
+/// The list is the currency authority: `currency_code` and `price_scale` are **inherited** from the
+/// list row inside the transaction, because `fk_commerce_price_list_item_list_currency` refuses a
+/// row whose currency disagrees with its list — the two layers of the price system must quote the
+/// same money. `min_quantity` is the ladder step the row prices; two rows of one list may not
+/// price the same SKU at the same step (`uk_commerce_price_list_item_tier`).
+///
+/// The row exists alongside `commerce_product_sku.sale_price_minor`, not instead of it: the base
+/// price is what every list falls back to, and the resolution order (item, then sale, then list) is
+/// executed by the read model, not here.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreatePriceListItemCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
+    pub tenant_id: String,
+    pub organization_id: String,
+    pub price_list_id: String,
+    pub sku_id: String,
+    /// The price at this ladder step, in the list's minor unit.
+    pub price_minor: i64,
+    /// The quantity this step starts at. Defaults to 1, the first rung of the ladder.
+    pub min_quantity: i64,
+}
+
+/// Updates one priced row.
+///
+/// `min_quantity` is mutable but stays under the tier uniqueness: restating it to a step another
+/// row of the same list already prices is a `409`, not a silent merge.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpdatePriceListItemCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
+    pub tenant_id: String,
+    pub price_list_item_id: String,
+    pub price_minor: Option<i64>,
+    pub min_quantity: Option<i64>,
+    pub status: Option<LifecycleStatus>,
+    /// The row version the caller read, taken from the request's `If-Match` precondition.
+    ///
+    /// A mismatch is not a malformed request: it means somebody else wrote the row since this
+    /// caller read it, so the caller's copy is stale and the write would silently discard their
+    /// change. The repository compares this against `version` inside the same statement that
+    /// writes, which is what makes the comparison race-free.
+    pub expected_version: i64,
+}
+
+/// Deletes one priced row.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeletePriceListItemCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
+    pub tenant_id: String,
+    pub price_list_item_id: String,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
     ///
     /// A mismatch is not a malformed request: it means somebody else wrote the row since this
@@ -372,6 +692,8 @@ pub struct DeleteMediaCommand {
 /// source_category_id <> category_id`, so a category cannot claim to inherit from itself.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateCategoryAttributeCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub organization_id: String,
     pub category_id: String,
@@ -392,6 +714,8 @@ pub struct CreateCategoryAttributeCommand {
 /// destroying the history.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdateCategoryAttributeCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub binding_id: String,
     pub role: Option<AttributeRole>,
@@ -412,6 +736,8 @@ pub struct UpdateCategoryAttributeCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeleteCategoryAttributeCommand {
+    /// The authenticated principal this write is attributed to.
+    pub actor: String,
     pub tenant_id: String,
     pub binding_id: String,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
@@ -443,6 +769,7 @@ macro_rules! impl_required_text_command {
 /// the contract could not honestly declare the bound either.
 impl CreateCategoryCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("organization_id", &self.organization_id)?;
         crate::validation::require_non_empty("category_no", &self.category_no)?;
@@ -457,6 +784,7 @@ impl CreateCategoryCommand {
 }
 impl UpdateCategoryCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("category_id", &self.category_id)?;
         if let Some(name) = self.name.as_deref() {
@@ -479,8 +807,14 @@ impl_required_text_command!(DeleteCategoryCommand, tenant_id, category_id);
 /// PostgreSQL.
 ///
 /// `name` carries `ck_commerce_product_attribute_name_length` (1..100) for the same reason.
+///
+/// The type pairing is validated here rather than left to the baseline CHECK, because both rules
+/// are about what the caller asked for, not what the row looks like: a multi-value flag on a
+/// non-enum attribute is a request error (`422` naming the field), and dictionary values on a
+/// free-text attribute are a category mistake the CHECK cannot even see.
 impl CreateAttributeCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("organization_id", &self.organization_id)?;
         crate::validation::require_non_empty("attribute_no", &self.attribute_no)?;
@@ -490,6 +824,22 @@ impl CreateAttributeCommand {
             &self.name,
             crate::validation::ATTRIBUTE_NAME_MAX_CHARS,
         )?;
+        crate::validation::require_non_negative("sort_order", self.sort_order)?;
+        if self.is_multi_value && self.value_type != AttributeValueType::Enum {
+            return Err(CommerceServiceError::validation(
+                "is_multi_value requires value_type `enum`: a multi-valued attribute needs \
+                 discrete options to be multi-valued of",
+            ));
+        }
+        if self.value_type != AttributeValueType::Enum && !self.values.is_empty() {
+            return Err(CommerceServiceError::validation(
+                "values are only valid for value_type `enum`: a free-text attribute has no \
+                 dictionary to seed",
+            ));
+        }
+        if let Some(unit) = self.unit_symbol.as_deref() {
+            crate::validation::require_non_empty("unit_symbol", unit)?;
+        }
         for value in &self.values {
             crate::validation::require_non_empty("values[]", value)?;
             crate::validation::require_within_chars(
@@ -501,24 +851,195 @@ impl CreateAttributeCommand {
         Ok(())
     }
 }
+impl UpdateAttributeCommand {
+    pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
+        crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
+        crate::validation::require_non_empty("attribute_id", &self.attribute_id)?;
+        if let Some(name) = self.name.as_deref() {
+            crate::validation::require_non_empty("name", name)?;
+            crate::validation::require_within_chars(
+                "name",
+                name,
+                crate::validation::ATTRIBUTE_NAME_MAX_CHARS,
+            )?;
+        }
+        // `Some(None)` is the clearing write, not an absent field, so only a restated unit is
+        // checked; there is nothing to check about "no unit".
+        if let Some(unit) = self.unit_symbol.as_ref().and_then(Option::as_deref) {
+            crate::validation::require_non_empty("unit_symbol", unit)?;
+        }
+        if let Some(sort_order) = self.sort_order {
+            crate::validation::require_non_negative("sort_order", sort_order)?;
+        }
+        Ok(())
+    }
+}
+/// `CreateAttributeValueCommand` validates the swatch pattern against the baseline CHECK.
+///
+/// `ck_commerce_product_attribute_value_color_hex` is `^#[0-9A-Fa-f]{6}$`; checking it here keeps a
+/// malformed colour a named `422` instead of a `23514` raised mid-transaction.
+impl CreateAttributeValueCommand {
+    pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
+        crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
+        crate::validation::require_non_empty("organization_id", &self.organization_id)?;
+        crate::validation::require_non_empty("attribute_id", &self.attribute_id)?;
+        crate::validation::require_non_empty("value_code", &self.value_code)?;
+        crate::validation::require_non_empty("display_value", &self.display_value)?;
+        crate::validation::require_within_chars(
+            "display_value",
+            &self.display_value,
+            crate::validation::ATTRIBUTE_VALUE_MAX_CHARS,
+        )?;
+        crate::validation::require_non_negative("sort_order", self.sort_order)?;
+        if let Some(color) = self.color_hex.as_deref() {
+            crate::validation::require_color_hex("color_hex", color)?;
+        }
+        if let Some(resource) = self.media_resource_id.as_deref() {
+            crate::validation::require_non_empty("media_resource_id", resource)?;
+        }
+        Ok(())
+    }
+}
+impl UpdateAttributeValueCommand {
+    pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
+        crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
+        crate::validation::require_non_empty("attribute_value_id", &self.attribute_value_id)?;
+        if let Some(display) = self.display_value.as_deref() {
+            crate::validation::require_non_empty("display_value", display)?;
+            crate::validation::require_within_chars(
+                "display_value",
+                display,
+                crate::validation::ATTRIBUTE_VALUE_MAX_CHARS,
+            )?;
+        }
+        // Both three-state fields are cleared by `Some(None)`, so only a restated value is checked.
+        if let Some(color) = self.color_hex.as_ref().and_then(Option::as_deref) {
+            crate::validation::require_color_hex("color_hex", color)?;
+        }
+        if let Some(resource) = self.media_resource_id.as_ref().and_then(Option::as_deref) {
+            crate::validation::require_non_empty("media_resource_id", resource)?;
+        }
+        if let Some(sort_order) = self.sort_order {
+            crate::validation::require_non_negative("sort_order", sort_order)?;
+        }
+        Ok(())
+    }
+}
+impl_required_text_command!(DeleteAttributeValueCommand, tenant_id, attribute_value_id);
+/// `ReplaceProductAttributesCommand` validates each entry's carrier exclusivity and the set's
+/// distinctness before any SQL runs.
+///
+/// `ck_commerce_product_spu_attribute_carrier` refuses a row with neither or both carriers, and
+/// `uk_commerce_product_spu_attribute_value` admits one live value per `(spu_id, attribute_id)` —
+/// so a duplicate attribute in the submitted set would collide with itself on insert. Both are
+/// caller errors, named here rather than raised mid-transaction.
+impl ReplaceProductAttributesCommand {
+    pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
+        crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
+        crate::validation::require_non_empty("spu_id", &self.spu_id)?;
+        let mut seen = std::collections::BTreeSet::new();
+        for entry in &self.attributes {
+            crate::validation::require_non_empty("attribute_id", &entry.attribute_id)?;
+            match (
+                entry.attribute_value_id.as_deref(),
+                entry.raw_value.as_deref(),
+            ) {
+                (None, None) => {
+                    return Err(CommerceServiceError::validation(format!(
+                        "attributes[{attribute_id}] must carry exactly one of attribute_value_id \
+                         or raw_value",
+                        attribute_id = entry.attribute_id,
+                    )));
+                }
+                (Some(_), Some(_)) => {
+                    return Err(CommerceServiceError::validation(format!(
+                        "attributes[{attribute_id}] must carry exactly one of attribute_value_id \
+                         or raw_value, not both",
+                        attribute_id = entry.attribute_id,
+                    )));
+                }
+                (Some(value), None) => {
+                    crate::validation::require_non_empty("attribute_value_id", value)?;
+                }
+                (None, Some(raw)) => {
+                    crate::validation::require_non_empty("raw_value", raw)?;
+                }
+            }
+            crate::validation::require_non_negative("sort_order", entry.sort_order)?;
+            if !seen.insert(entry.attribute_id.trim().to_owned()) {
+                return Err(CommerceServiceError::validation(format!(
+                    "attributes contains `{attribute}` more than once: one value per attribute",
+                    attribute = entry.attribute_id,
+                )));
+            }
+        }
+        Ok(())
+    }
+}
 /// `CreatePriceListCommand` validates `price_list_no` against the derived name's bound.
 ///
 /// `commerce_price_list.name` is `NOT NULL` with `char_length(name) BETWEEN 1 AND 200` and the
 /// repository derives it from `price_list_no`, so the number is what must fit.
 impl CreatePriceListCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("organization_id", &self.organization_id)?;
         crate::validation::require_non_empty("price_list_no", &self.price_list_no)?;
+        crate::validation::require_non_empty("name", &self.name)?;
         crate::validation::require_non_empty("currency_code", &self.currency_code)?;
         crate::validation::require_within_chars(
             "price_list_no",
             &self.price_list_no,
             crate::validation::PRICE_LIST_NO_MAX_CHARS,
         )?;
+        crate::validation::require_within_chars(
+            "name",
+            &self.name,
+            crate::validation::PRICE_LIST_NO_MAX_CHARS,
+        )?;
         Ok(())
     }
 }
+impl CreatePriceListItemCommand {
+    pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
+        crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
+        crate::validation::require_non_empty("organization_id", &self.organization_id)?;
+        crate::validation::require_non_empty("price_list_id", &self.price_list_id)?;
+        crate::validation::require_non_empty("sku_id", &self.sku_id)?;
+        crate::validation::require_non_negative_minor("price_minor", self.price_minor)?;
+        if self.min_quantity < 1 {
+            return Err(CommerceServiceError::validation(
+                "min_quantity must be at least 1: it is the quantity a ladder step starts at",
+            ));
+        }
+        Ok(())
+    }
+}
+impl UpdatePriceListItemCommand {
+    pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
+        crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
+        crate::validation::require_non_empty("price_list_item_id", &self.price_list_item_id)?;
+        if let Some(minor) = self.price_minor {
+            crate::validation::require_non_negative_minor("price_minor", minor)?;
+        }
+        if let Some(min_quantity) = self.min_quantity {
+            if min_quantity < 1 {
+                return Err(CommerceServiceError::validation(
+                    "min_quantity must be at least 1: it is the quantity a ladder step starts at",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+impl_required_text_command!(DeletePriceListItemCommand, tenant_id, price_list_item_id);
 impl_required_text_command!(UpdatePriceListCommand, tenant_id, price_list_id);
 // `product_type` and `category_id` are typed/required, so presence is guaranteed by the type
 // rather than by a runtime string check.
@@ -527,6 +1048,7 @@ impl_required_text_command!(UpdatePriceListCommand, tenant_id, price_list_id);
 // pins with `char_length(name) BETWEEN 1 AND 300`.
 impl CreateProductSpuCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("organization_id", &self.organization_id)?;
         crate::validation::require_non_empty("spu_no", &self.spu_no)?;
@@ -537,11 +1059,18 @@ impl CreateProductSpuCommand {
             &self.title,
             crate::validation::SPU_TITLE_MAX_CHARS,
         )?;
+        if let Some(weight) = self.weight_gram {
+            crate::validation::require_non_negative("weight_gram", weight)?;
+        }
+        if let Some(volume) = self.volume_ml {
+            crate::validation::require_non_negative("volume_ml", volume)?;
+        }
         Ok(())
     }
 }
 impl UpdateProductSpuCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("spu_id", &self.spu_id)?;
         if let Some(title) = self.title.as_deref() {
@@ -551,6 +1080,14 @@ impl UpdateProductSpuCommand {
                 title,
                 crate::validation::SPU_TITLE_MAX_CHARS,
             )?;
+        }
+        // The three-state columns are cleared by `Some(None)`, so only a restated value is
+        // range-checked; there is nothing to check about "remove it".
+        if let Some(Some(weight)) = self.weight_gram {
+            crate::validation::require_non_negative("weight_gram", weight)?;
+        }
+        if let Some(Some(volume)) = self.volume_ml {
+            crate::validation::require_non_negative("volume_ml", volume)?;
         }
         Ok(())
     }
@@ -570,6 +1107,7 @@ impl_required_text_command!(ArchiveSpuCommand, tenant_id, spu_id);
 /// neither question can be answered from the command alone.
 impl CreateProductSkuCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("organization_id", &self.organization_id)?;
         crate::validation::require_non_empty("spu_id", &self.spu_id)?;
@@ -581,6 +1119,22 @@ impl CreateProductSkuCommand {
         if let Some(list) = self.list_price_minor {
             crate::validation::require_non_negative_minor("list_price_minor", list)?;
         }
+        if let Some(cost) = self.cost_price_minor {
+            crate::validation::require_non_negative_minor("cost_price_minor", cost)?;
+        }
+        if let Some(weight) = self.weight_gram {
+            crate::validation::require_non_negative("weight_gram", weight)?;
+        }
+        // The pairing the baseline CHECK enforces, answered before SQL: a refusal here names both
+        // fields, where a 23514 names only the constraint.
+        if self.inventory_policy == InventoryPolicy::Backorder
+            && self.inventory_tracking != InventoryTrackingMode::Tracked
+        {
+            return Err(CommerceServiceError::validation(
+                "inventory_policy `backorder` requires inventory_tracking `quantity`: an untracked \
+                 SKU has no stock to run out of",
+            ));
+        }
         crate::validation::require_distinct("attribute_value_ids", &self.attribute_value_ids)?;
         require_metadata_object(&self.metadata)?;
         Ok(())
@@ -588,6 +1142,7 @@ impl CreateProductSkuCommand {
 }
 impl UpdateProductSkuCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("sku_id", &self.sku_id)?;
         if let Some(name) = self.name.as_deref() {
@@ -603,6 +1158,12 @@ impl UpdateProductSkuCommand {
         // range-checked; there is nothing to check about "no reference price".
         if let Some(Some(minor)) = self.list_price_minor {
             crate::validation::require_non_negative_minor("list_price_minor", minor)?;
+        }
+        if let Some(Some(minor)) = self.cost_price_minor {
+            crate::validation::require_non_negative_minor("cost_price_minor", minor)?;
+        }
+        if let Some(Some(weight)) = self.weight_gram {
+            crate::validation::require_non_negative("weight_gram", weight)?;
         }
         if let Some(currency_code) = self.currency_code.as_deref() {
             crate::validation::require_non_empty("currency_code", currency_code)?;
@@ -640,6 +1201,7 @@ impl_required_text_command!(DeleteProductSkuCommand, tenant_id, sku_id);
 /// instead of a `23514` raised mid-transaction inside PostgreSQL.
 impl CreateCategoryAttributeCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("organization_id", &self.organization_id)?;
         crate::validation::require_non_empty("category_id", &self.category_id)?;
@@ -669,6 +1231,7 @@ impl_required_text_command!(DeleteCategoryAttributeCommand, tenant_id, binding_i
 /// reach SQL with a snapshot the column cannot represent.
 impl CreateMediaCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("organization_id", &self.organization_id)?;
         crate::validation::require_non_empty("owner_id", &self.owner_id)?;
@@ -702,6 +1265,7 @@ impl CreateMediaCommand {
 /// be checking a different row than the one being updated.
 impl UpdateMediaCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
         crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
         crate::validation::require_non_empty("media_id", &self.media_id)?;
         if let Some(sort_order) = self.sort_order {

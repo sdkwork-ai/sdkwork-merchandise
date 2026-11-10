@@ -34,6 +34,10 @@ pub enum CatalogRepositoryCommand {
     UpdateCategory,
     DeleteCategory,
     CreateAttribute,
+    UpdateAttribute,
+    CreateAttributeValue,
+    UpdateAttributeValue,
+    DeleteAttributeValue,
     BindCategoryAttribute,
     UpdateCategoryAttribute,
     DeleteCategoryAttribute,
@@ -42,11 +46,15 @@ pub enum CatalogRepositoryCommand {
     DeleteSpu,
     PublishSpu,
     ArchiveSpu,
+    ReplaceSpuAttributes,
     CreateSku,
     UpdateSku,
     DeleteSku,
     CreatePriceList,
     UpdatePriceList,
+    CreatePriceListItem,
+    UpdatePriceListItem,
+    DeletePriceListItem,
     CreateMedia,
     UpdateMedia,
     DeleteMedia,
@@ -65,6 +73,10 @@ impl CatalogPortRequirement {
             CatalogRepositoryCommand::UpdateCategory,
             CatalogRepositoryCommand::DeleteCategory,
             CatalogRepositoryCommand::CreateAttribute,
+            CatalogRepositoryCommand::UpdateAttribute,
+            CatalogRepositoryCommand::CreateAttributeValue,
+            CatalogRepositoryCommand::UpdateAttributeValue,
+            CatalogRepositoryCommand::DeleteAttributeValue,
             CatalogRepositoryCommand::BindCategoryAttribute,
             CatalogRepositoryCommand::UpdateCategoryAttribute,
             CatalogRepositoryCommand::DeleteCategoryAttribute,
@@ -73,11 +85,15 @@ impl CatalogPortRequirement {
             CatalogRepositoryCommand::DeleteSpu,
             CatalogRepositoryCommand::PublishSpu,
             CatalogRepositoryCommand::ArchiveSpu,
+            CatalogRepositoryCommand::ReplaceSpuAttributes,
             CatalogRepositoryCommand::CreateSku,
             CatalogRepositoryCommand::UpdateSku,
             CatalogRepositoryCommand::DeleteSku,
             CatalogRepositoryCommand::CreatePriceList,
             CatalogRepositoryCommand::UpdatePriceList,
+            CatalogRepositoryCommand::CreatePriceListItem,
+            CatalogRepositoryCommand::UpdatePriceListItem,
+            CatalogRepositoryCommand::DeletePriceListItem,
             CatalogRepositoryCommand::CreateMedia,
             CatalogRepositoryCommand::UpdateMedia,
             CatalogRepositoryCommand::DeleteMedia,
@@ -100,6 +116,9 @@ pub struct CategoryRecord {
     pub organization_id: i64,
     pub category_no: String,
     pub parent_id: Option<i64>,
+    /// The category's position on the back-office tree, when it sits on one. The two trees are
+    /// independent, so this is `None` more often than `parent_id` is.
+    pub back_parent_id: Option<i64>,
     pub path: String,
     pub depth: i64,
     pub is_leaf: bool,
@@ -131,6 +150,13 @@ pub struct AttributeRecord {
     pub attribute_no: String,
     pub name: String,
     pub value_type: String,
+    /// The control a console renders for this attribute (`select`, `multi_select`, `text`, …).
+    pub input_hint: String,
+    /// Whether the attribute accepts more than one dictionary value per product. Only `enum`
+    /// attributes can carry this.
+    pub is_multi_value: bool,
+    /// The unit the attribute's values are denominated in (`cm`, `kg`), when one is declared.
+    pub unit_symbol: Option<String>,
     pub status: String,
     pub sort_order: i64,
     /// The row's optimistic-concurrency version.
@@ -145,15 +171,61 @@ pub struct AttributeRecord {
     pub updated_at: String,
 }
 
+/// Read model of one `commerce_product_attribute_value` row.
+///
+/// `color_hex` and `media_resource_id` are the presentation metadata a console renders a colourway
+/// with; both are nullable because not every value has a swatch or a picture. The value is
+/// identified by `(attribute_id, value_code)` within a tenant — the pair the partial unique index
+/// enforces — while `id` is what the variant and SPU-attribute paths submit.
 #[derive(Clone, Debug)]
 pub struct AttributeValueRecord {
     pub id: i64,
     pub tenant_id: i64,
+    pub organization_id: i64,
     pub attribute_id: i64,
     pub value_code: String,
     pub display_value: String,
+    pub color_hex: Option<String>,
+    pub media_resource_id: Option<i64>,
     pub sort_order: i64,
     pub status: String,
+    /// The row's optimistic-concurrency version.
+    ///
+    /// One column carries both directions of the same fact. On a read it is the version the caller
+    /// must echo back as `If-Match` on its next write; on a write it is the version the row is at
+    /// *after* the write, which is what to echo back next. Because the baseline advances one column
+    /// and the precondition compares that same column, there is exactly one notion of "how old is
+    /// this copy", and a caller cannot hold a version of one thing while editing another.
+    pub version: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Read model of one `commerce_product_spu_attribute` row, with the business keys a console renders.
+///
+/// The value is spelled two ways on one row: `attribute_value_id` + `display_value` for a dictionary
+/// value, or `raw_value` for the free-text spellings the dictionary does not hold
+/// (`ck_commerce_product_spu_attribute_carrier` guarantees exactly one is present). `attribute_no`
+/// and `attribute_name` are joined from the dictionary so a detail page can render the row without a
+/// second lookup.
+#[derive(Clone, Debug)]
+pub struct SpuAttributeRecord {
+    pub attribute_id: i64,
+    pub attribute_no: String,
+    pub attribute_name: String,
+    pub attribute_role: String,
+    pub attribute_value_id: Option<i64>,
+    pub display_value: Option<String>,
+    pub raw_value: Option<String>,
+    pub sort_order: i64,
+}
+
+/// The outcome of a product attribute-set replacement: the new set plus the SPU version the write
+/// left the product row at, which is what the next `If-Match` must name.
+#[derive(Clone, Debug)]
+pub struct ProductAttributesWrite {
+    pub attributes: Vec<SpuAttributeRecord>,
+    pub version: i64,
 }
 
 /// Read model of one `commerce_product_spu` row.
@@ -175,6 +247,16 @@ pub struct SpuRecord {
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub product_type: String,
+    /// The manufacturer's standard model number, when declared.
+    pub model_no: Option<String>,
+    /// The product-level barcode, unique per tenant while the row is live.
+    pub barcode: Option<String>,
+    /// Ship weight in grams, when declared.
+    pub weight_gram: Option<i64>,
+    /// Shipping volume in millilitres, when declared.
+    pub volume_ml: Option<i64>,
+    /// The tenant's tax-classification key, when declared.
+    pub tax_class_code: Option<String>,
     pub status: String,
     pub sales_status: String,
     pub published_at: Option<String>,
@@ -188,6 +270,12 @@ pub struct SpuRecord {
     pub version: i64,
     pub created_at: String,
     pub updated_at: String,
+    /// The product's key/parameter attribute set, loaded with the row.
+    ///
+    /// A detail page cannot render a specification table it has to fetch per row, and a list page
+    /// pays the same for one batched load as for none — so the set rides on the record, the same way
+    /// a SKU's axes do. Empty when the product declares none, never `null`.
+    pub attributes: Vec<SpuAttributeRecord>,
 }
 
 /// Read model of one `commerce_product_sku` row.
@@ -215,11 +303,25 @@ pub struct SkuRecord {
     pub name: Option<String>,
     pub title: Option<String>,
     pub currency_code: String,
+    /// The currency's display symbol, resolved from `commerce_currency` at read time. It is
+    /// presentation metadata a console renders next to the minor-unit amount, never a conversion
+    /// factor.
+    pub currency_symbol: String,
     pub price_scale: i64,
     pub sale_price_minor: i64,
     pub list_price_minor: Option<i64>,
+    /// The cost of acquiring one unit, in the same minor unit, when declared. This is what a
+    /// margin needs; it is never published to a buyer.
+    pub cost_price_minor: Option<i64>,
+    /// The SKU-level barcode, when declared.
+    pub barcode: Option<String>,
+    /// Ship weight in grams, when declared.
+    pub weight_gram: Option<i64>,
     pub fulfillment_type: String,
     pub inventory_tracking: String,
+    /// What happens when the SKU's tracked stock runs out. `backorder` is only legal on a
+    /// tracked SKU, which the baseline CHECK enforces.
+    pub inventory_policy: String,
     pub status: String,
     pub sales_status: String,
     pub published_at: Option<String>,
@@ -252,7 +354,11 @@ pub struct PriceListRecord {
     pub price_list_no: String,
     pub name: String,
     pub currency_code: String,
+    /// The currency's display symbol, resolved from `commerce_currency` at read time.
+    pub currency_symbol: String,
     pub market_code: Option<String>,
+    /// The B2B customer segment the list applies to, when it is segment-scoped.
+    pub customer_segment: Option<String>,
     pub status: String,
     pub starts_at: Option<String>,
     pub ends_at: Option<String>,
@@ -288,6 +394,38 @@ pub struct CategoryAttributeRecord {
     pub filterable: bool,
     pub comparable: bool,
     pub sort_order: i64,
+    pub status: String,
+    /// The row's optimistic-concurrency version.
+    ///
+    /// One column carries both directions of the same fact. On a read it is the version the caller
+    /// must echo back as `If-Match` on its next write; on a write it is the version the row is at
+    /// *after* the write, which is what to echo back next. Because the baseline advances one column
+    /// and the precondition compares that same column, there is exactly one notion of "how old is
+    /// this copy", and a caller cannot hold a version of one thing while editing another.
+    pub version: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Read model of one `commerce_price_list_item` row.
+///
+/// `currency_code` and `price_scale` are inherited from the list at write time and carried here
+/// for the same reason the SKU carries its own snapshot: a row must be readable in one place, and
+/// `fk_commerce_price_list_item_list_currency` guarantees the inheritance cannot disagree with
+/// the list it points at.
+#[derive(Clone, Debug)]
+pub struct PriceListItemRecord {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub organization_id: i64,
+    pub price_list_id: i64,
+    pub sku_id: i64,
+    pub currency_code: String,
+    pub price_scale: i64,
+    /// The price at this ladder step, in the currency's minor unit.
+    pub price_minor: i64,
+    /// The quantity this step starts at; 1 is the first rung of the ladder.
+    pub min_quantity: i64,
     pub status: String,
     /// The row's optimistic-concurrency version.
     ///
@@ -490,10 +628,50 @@ pub trait CatalogRepositoryPort: Send + Sync {
         query: AttributeListQuery,
     ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AttributeRecord>>;
 
+    fn retrieve_attribute<'a>(
+        &'a self,
+        query: AttributeRetrieveQuery,
+    ) -> CommerceCatalogFuture<'a, Option<AttributeRecord>>;
+
     fn create_attribute<'a>(
         &'a self,
         command: CreateAttributeCommand,
     ) -> CommerceCatalogFuture<'a, AttributeRecord>;
+
+    fn update_attribute<'a>(
+        &'a self,
+        command: UpdateAttributeCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<AttributeRecord>>;
+
+    fn list_attribute_values_page<'a>(
+        &'a self,
+        query: AttributeValueListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AttributeValueRecord>>;
+
+    fn create_attribute_value<'a>(
+        &'a self,
+        command: CreateAttributeValueCommand,
+    ) -> CommerceCatalogFuture<'a, AttributeValueRecord>;
+
+    fn update_attribute_value<'a>(
+        &'a self,
+        command: UpdateAttributeValueCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<AttributeValueRecord>>;
+
+    fn delete_attribute_value<'a>(
+        &'a self,
+        command: DeleteAttributeValueCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<()>>;
+
+    fn list_spu_attributes<'a>(
+        &'a self,
+        query: ProductAttributesRetrieveQuery,
+    ) -> CommerceCatalogFuture<'a, Vec<SpuAttributeRecord>>;
+
+    fn replace_spu_attributes<'a>(
+        &'a self,
+        command: ReplaceProductAttributesCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<ProductAttributesWrite>>;
 
     fn list_price_lists<'a>(
         &'a self,
@@ -510,10 +688,40 @@ pub trait CatalogRepositoryPort: Send + Sync {
         command: CreatePriceListCommand,
     ) -> CommerceCatalogFuture<'a, PriceListRecord>;
 
+    fn retrieve_price_list<'a>(
+        &'a self,
+        query: PriceListRetrieveQuery,
+    ) -> CommerceCatalogFuture<'a, Option<PriceListRecord>>;
+
     fn update_price_list<'a>(
         &'a self,
         command: UpdatePriceListCommand,
     ) -> CommerceCatalogFuture<'a, GuardedWrite<PriceListRecord>>;
+
+    fn list_price_list_items<'a>(
+        &'a self,
+        query: PriceListItemListQuery,
+    ) -> CommerceCatalogFuture<'a, Vec<PriceListItemRecord>>;
+
+    fn list_price_list_items_page<'a>(
+        &'a self,
+        query: PriceListItemListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<PriceListItemRecord>>;
+
+    fn create_price_list_item<'a>(
+        &'a self,
+        command: CreatePriceListItemCommand,
+    ) -> CommerceCatalogFuture<'a, PriceListItemRecord>;
+
+    fn update_price_list_item<'a>(
+        &'a self,
+        command: UpdatePriceListItemCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<PriceListItemRecord>>;
+
+    fn delete_price_list_item<'a>(
+        &'a self,
+        command: DeletePriceListItemCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<()>>;
 
     fn list_category_attributes<'a>(
         &'a self,

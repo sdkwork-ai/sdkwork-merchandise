@@ -181,14 +181,6 @@ const DECLARED_WITHOUT_A_CODE_PATH = new Map([
     'commerce_product_sku_translation',
     'Localized SKU names have no write path, read model, or operation; the SKU create body accepts one name and one title for the default locale.',
   ],
-  [
-    'commerce_product_spu_attribute',
-    'A product declares no attribute values: the category template reserves axes and parameters, and only the sales axes reach a write path today, through the SKU variant bindings. A parameter-value operation is owed.',
-  ],
-  [
-    'commerce_price_list_item',
-    'Four price decisions are needed before this can be wired or retired: whether per-SKU list prices exist alongside commerce_product_sku.sale_price_minor, which one a checkout reads, whether price_list_item carries its own currency scale, and what happens to item rows when a price list is deactivated.',
-  ],
 ]);
 
 const wired = baselineTables.filter((table) => source.includes(table));
@@ -236,10 +228,12 @@ test('every baseline table is either wired or recorded as a declared gap', () =>
 
 test('the declared-gap list is exactly the size it says it is', () => {
   // The size is asserted rather than derived: a new declared table that nothing reaches must make
-  // this list longer deliberately, with a reason, rather than arriving as an extra entry.
+  // this list longer deliberately, with a reason, rather than arriving as an extra entry. The
+  // count dropped to 6 when `commerce_product_spu_attribute` gained its write path
+  // (`products.attributes.update`), which is the direction the gate expects: the list shrinks.
   assert.equal(
     DECLARED_WITHOUT_A_CODE_PATH.size,
-    7,
+    5,
     'the declared-gap list changed size; re-confirm each entry is still a gap, then update this count deliberately',
   );
 });

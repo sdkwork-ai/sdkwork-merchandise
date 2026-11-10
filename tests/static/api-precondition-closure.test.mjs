@@ -252,12 +252,12 @@ test('1. the route table is non-empty and every route names a handler defined in
     }
   }
   // The denominator this gate's counts are relative to.
-  assert.equal(routes.size, 15, `expected 15 route paths, parsed ${routes.size}`);
+  assert.equal(routes.size, 21, `expected 19 route paths, parsed ${routes.size}`);
 });
 
 test('2. the contract still declares every operation this gate reasons about', () => {
-  assert.equal(allOperations.length, 28, `expected 28 operations, found ${allOperations.length}`);
-  // Seven of the twenty-eight are creates: POST against a collection. There is no prior version to
+  assert.equal(allOperations.length, 42, `expected 34 operations, found ${allOperations.length}`);
+  // Nine of the thirty-eight are creates: POST against a collection. There is no prior version to
   // precondition on, and requiring the header would make them uncallable rather than safer. The two
   // POSTs that are *not* creates — publish and archive — do carry one, because they rewrite a row
   // that already exists.
@@ -267,7 +267,7 @@ test('2. the contract still declares every operation this gate reasons about', (
       !entry.operationPath.endsWith('/publish') &&
       !entry.operationPath.endsWith('/archive'),
   );
-  assert.equal(creates.length, 7, `expected 7 create operations, found ${creates.length}`);
+  assert.equal(creates.length, 9, `expected 8 create operations, found ${creates.length}`);
 });
 
 test('3. `If-Match` is declared exactly on the operations that read it, in both directions', () => {
@@ -300,10 +300,10 @@ test('3. `If-Match` is declared exactly on the operations that read it, in both 
   );
 });
 
-test('4. the guarded operations are exactly the thirteen non-create mutators', () => {
+test('4. the guarded operations are exactly the nineteen non-create mutators', () => {
   const guarded = allOperations.filter(({ operation }) => declaresIfMatch(operation));
   const names = guarded.map(({ method, operationPath }) => `${method.toUpperCase()} ${operationPath}`);
-  assert.equal(names.length, 13, `expected 13 guarded operations, found ${names.length}:\n${names.join('\n')}`);
+  assert.equal(names.length, 19, `expected 19 guarded operations, found ${names.length}:\n${names.join('\n')}`);
 
   for (const { method, operation } of guarded) {
     assert.notEqual(method, 'get', 'a read must not require If-Match');
@@ -339,13 +339,13 @@ test('6. staleness and a domain conflict travel on two channels, not one', () =>
   const stalenessSites = statements.match(/GuardedWrite::StaleVersion/g) ?? [];
   assert.equal(
     stalenessSites.length,
-    13,
+    19,
     `expected one staleness site per guarded statement, found ${stalenessSites.length}`,
   );
   assert.match(
     statements,
     /Result<StaleVersion, CommerceServiceError>/,
-    'the resolver no longer returns a StaleVersion, so the thirteen sites fabricate one themselves',
+    'the resolver no longer returns a StaleVersion, so the nineteen sites fabricate one themselves',
   );
   assert.match(
     statements,
@@ -411,12 +411,13 @@ test('8. the version source every guarded operation names is required on the res
     );
     checked += 1;
   }
-  assert.equal(checked, 8, `expected 8 guarded operations returning a resource, checked ${checked}`);
+  assert.equal(checked, 12, `expected 12 guarded operations returning a referenced resource, checked ${checked}`);
 });
 
 test('9. every resource this surface returns publishes a version', () => {
   const resources = [
     'Attribute',
+    'AttributeValue',
     'Category',
     'CategoryAttribute',
     'Media',
@@ -441,6 +442,12 @@ test('10. the repository guards exactly thirteen statements, and each is a named
   const expected = [
     'UPDATE_CATEGORY_SQL',
     'SOFT_DELETE_CATEGORY_SQL',
+    'UPDATE_ATTRIBUTE_SQL',
+    'UPDATE_ATTRIBUTE_VALUE_SQL',
+    'SOFT_DELETE_ATTRIBUTE_VALUE_SQL',
+    'UPDATE_PRICE_LIST_ITEM_SQL',
+    'SOFT_DELETE_PRICE_LIST_ITEM_SQL',
+    'GUARD_SPU_VERSION_SQL',
     'UPDATE_PRICE_LIST_SQL',
     'UPDATE_CATEGORY_ATTRIBUTE_SQL',
     'SOFT_DELETE_CATEGORY_ATTRIBUTE_SQL',
@@ -456,7 +463,7 @@ test('10. the repository guards exactly thirteen statements, and each is a named
   assert.deepEqual(
     guardedStatements.sort(),
     [...expected].sort(),
-    'the set of statements carrying `AND version = $n` is not the thirteen preconditioned writes',
+    'the set of statements carrying `AND version = $n` is not the nineteen preconditioned writes',
   );
   for (const name of expected) {
     assert.ok(sql.has(name), `${name} disappeared from ${STATEMENTS_PATH}`);
@@ -477,6 +484,7 @@ test('11. no create-path statement carries a precondition', () => {
   for (const name of [
     'SOFT_DELETE_SPU_SKUS_SQL',
     'SOFT_DELETE_SKU_AXES_SQL',
+    'SOFT_DELETE_SPU_ATTRIBUTES_SQL',
     'MOVE_CATEGORY_SUBTREE_SQL',
     'REFRESH_CATEGORY_LEAF_SQL',
     'UPDATE_SKU_VARIANT_SIGNATURE_SQL',
@@ -555,7 +563,7 @@ test('14. every guarded operation whose success carries a resource publishes its
     assert.ok(etag.schema?.pattern?.includes('[0-9]'), `${method.toUpperCase()} ${operationPath}: ETag must be constrained`);
     published += 1;
   }
-  assert.equal(published, 8, `expected 8 writes publishing ETag, found ${published}`);
+  assert.equal(published, 12, `expected 12 writes publishing ETag, found ${published}`);
 
   // The read that hands a client its first version has to publish one too, or the cycle never starts
   // without parsing the payload.

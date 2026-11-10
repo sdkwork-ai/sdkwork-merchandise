@@ -35,17 +35,22 @@
 //! boundary a question only the repository can answer.
 
 use sdkwork_merchandise_service::{
-    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, CatalogOffsetPage,
-    CatalogRepositoryPort, CategoryAttributeListQuery, CategoryAttributeRecord, CategoryListQuery,
-    CategoryRecord, CategoryRetrieveQuery, CommerceCatalogFuture, CreateAttributeCommand,
+    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRetrieveQuery, PriceListRetrieveQuery, AttributeValueListQuery,
+    AttributeValueRecord, CatalogOffsetPage, CatalogRepositoryPort, CategoryAttributeListQuery,
+    CategoryAttributeRecord, CategoryListQuery, CategoryRecord, CategoryRetrieveQuery,
+    CommerceCatalogFuture, CreateAttributeCommand, CreateAttributeValueCommand,
     CreateCategoryAttributeCommand, CreateCategoryCommand, CreateMediaCommand,
-    CreatePriceListCommand, CreateProductSkuCommand, CreateProductSpuCommand,
-    DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
-    DeleteProductSkuCommand, DeleteProductSpuCommand, GuardedWrite, MediaListQuery, MediaRecord,
-    PriceListListQuery, PriceListRecord, ProductSkuListQuery, ProductSkuRetrieveQuery,
-    ProductSpuListQuery, ProductSpuRetrieveQuery, PublishSpuCommand, SkuRecord, SpuRecord,
+    CreatePriceListCommand, CreatePriceListItemCommand, CreateProductSkuCommand,
+    CreateProductSpuCommand, DeleteAttributeValueCommand, DeleteCategoryAttributeCommand,
+    DeleteCategoryCommand, DeleteMediaCommand, DeletePriceListItemCommand, DeleteProductSkuCommand,
+    DeleteProductSpuCommand, GuardedWrite, MediaListQuery, MediaRecord, PriceListItemListQuery,
+    PriceListItemRecord, PriceListListQuery, PriceListRecord, ProductAttributesRetrieveQuery,
+    ProductAttributesWrite, ProductSkuListQuery, ProductSkuRetrieveQuery, ProductSpuListQuery,
+    ProductSpuRetrieveQuery, PublishSpuCommand, ReplaceProductAttributesCommand, SkuRecord,
+    SpuAttributeRecord, SpuRecord, UpdateAttributeCommand, UpdateAttributeValueCommand,
     UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
-    UpdatePriceListCommand, UpdateProductSkuCommand, UpdateProductSpuCommand,
+    UpdatePriceListCommand, UpdatePriceListItemCommand, UpdateProductSkuCommand,
+    UpdateProductSpuCommand,
 };
 
 use crate::postgres_catalog::PostgresCommerceCatalogStore;
@@ -125,6 +130,71 @@ impl CatalogRepositoryPort for PostgresCommerceCatalogStore {
         })
     }
 
+    fn update_attribute<'a>(
+        &'a self,
+        command: UpdateAttributeCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<AttributeRecord>> {
+        Box::pin(async move { self.update_attribute(&command).await })
+    }
+
+    fn list_attribute_values_page<'a>(
+        &'a self,
+        query: AttributeValueListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AttributeValueRecord>> {
+        Box::pin(async move {
+            let items = self.list_attribute_values(&query).await?;
+            let total_items = self.count_attribute_values(&query).await?;
+            Ok(CatalogOffsetPage::new(
+                items,
+                query.page,
+                query.page_size,
+                total_items,
+            ))
+        })
+    }
+
+    fn create_attribute_value<'a>(
+        &'a self,
+        command: CreateAttributeValueCommand,
+    ) -> CommerceCatalogFuture<'a, AttributeValueRecord> {
+        Box::pin(async move { self.create_attribute_value(&command).await })
+    }
+
+    fn update_attribute_value<'a>(
+        &'a self,
+        command: UpdateAttributeValueCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<AttributeValueRecord>> {
+        Box::pin(async move { self.update_attribute_value(&command).await })
+    }
+
+    fn delete_attribute_value<'a>(
+        &'a self,
+        command: DeleteAttributeValueCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
+        Box::pin(async move { self.delete_attribute_value(&command).await })
+    }
+
+    fn list_spu_attributes<'a>(
+        &'a self,
+        query: ProductAttributesRetrieveQuery,
+    ) -> CommerceCatalogFuture<'a, Vec<SpuAttributeRecord>> {
+        Box::pin(async move { self.list_spu_attributes(&query).await })
+    }
+
+    fn replace_spu_attributes<'a>(
+        &'a self,
+        command: ReplaceProductAttributesCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<ProductAttributesWrite>> {
+        Box::pin(async move { self.replace_spu_attributes(&command).await })
+    }
+
+    fn retrieve_attribute<'a>(
+        &'a self,
+        query: AttributeRetrieveQuery,
+    ) -> CommerceCatalogFuture<'a, Option<AttributeRecord>> {
+        Box::pin(async move { self.retrieve_attribute(&query).await })
+    }
+
     fn create_attribute<'a>(
         &'a self,
         command: CreateAttributeCommand,
@@ -162,11 +232,62 @@ impl CatalogRepositoryPort for PostgresCommerceCatalogStore {
         Box::pin(async move { self.create_price_list(&command).await })
     }
 
+    fn retrieve_price_list<'a>(
+        &'a self,
+        query: PriceListRetrieveQuery,
+    ) -> CommerceCatalogFuture<'a, Option<PriceListRecord>> {
+        Box::pin(async move { self.retrieve_price_list(&query).await })
+    }
+
     fn update_price_list<'a>(
         &'a self,
         command: UpdatePriceListCommand,
     ) -> CommerceCatalogFuture<'a, GuardedWrite<PriceListRecord>> {
         Box::pin(async move { self.update_price_list(&command).await })
+    }
+
+    fn list_price_list_items<'a>(
+        &'a self,
+        query: PriceListItemListQuery,
+    ) -> CommerceCatalogFuture<'a, Vec<PriceListItemRecord>> {
+        Box::pin(async move { self.list_price_list_items(&query).await })
+    }
+
+    fn list_price_list_items_page<'a>(
+        &'a self,
+        query: PriceListItemListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<PriceListItemRecord>> {
+        Box::pin(async move {
+            let items = self.list_price_list_items(&query).await?;
+            let total_items = self.count_price_list_items(&query).await?;
+            Ok(CatalogOffsetPage::new(
+                items,
+                query.page,
+                query.page_size,
+                total_items,
+            ))
+        })
+    }
+
+    fn create_price_list_item<'a>(
+        &'a self,
+        command: CreatePriceListItemCommand,
+    ) -> CommerceCatalogFuture<'a, PriceListItemRecord> {
+        Box::pin(async move { self.create_price_list_item(&command).await })
+    }
+
+    fn update_price_list_item<'a>(
+        &'a self,
+        command: UpdatePriceListItemCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<PriceListItemRecord>> {
+        Box::pin(async move { self.update_price_list_item(&command).await })
+    }
+
+    fn delete_price_list_item<'a>(
+        &'a self,
+        command: DeletePriceListItemCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
+        Box::pin(async move { self.delete_price_list_item(&command).await })
     }
 
     fn list_category_attributes<'a>(

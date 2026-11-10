@@ -29,8 +29,8 @@
 use std::sync::Arc;
 
 use sdkwork_merchandise_service::{
-    AttributeRecord, CatalogRepositoryPort, CategoryAttributeRecord, CategoryRecord, MediaRecord,
-    PriceListRecord, SkuRecord, SpuRecord,
+    AttributeRecord, AttributeValueRecord, CatalogRepositoryPort, CategoryAttributeRecord,
+    CategoryRecord, MediaRecord, PriceListRecord, SkuRecord, SpuRecord,
 };
 use serde::{Deserialize, Serialize};
 
@@ -81,9 +81,23 @@ pub struct AttributeQueryParams {
 struct PriceListQueryParams {
     currency_code: Option<String>,
     market_code: Option<String>,
+    customer_segment: Option<String>,
     status: Option<String>,
     page: Option<i64>,
     page_size: Option<i64>,
+}
+
+/// Query parameters for one price list's priced rows.
+///
+/// `list_id` is required: a row only means something inside one list's currency and time
+/// window. `sku_id` narrows to one SKU's ladder.
+#[derive(Debug, Deserialize)]
+pub struct PriceListItemQueryParams {
+    pub list_id: String,
+    pub sku_id: Option<String>,
+    pub status: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,6 +179,8 @@ struct MediaQueryParams {
 struct CreateCategoryBody {
     category_no: String,
     parent_id: Option<String>,
+    /// The back-office tree position, when the category sits on one.
+    back_parent_id: Option<String>,
     name: String,
     sort_order: Option<String>,
 }
@@ -173,6 +189,10 @@ struct CreateCategoryBody {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UpdateCategoryBody {
     parent_id: Option<String>,
+    /// Three-state: an explicit `null` removes the category from the back-office tree while an
+    /// omitted key keeps the stored position.
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    back_parent_id: Option<Option<String>>,
     name: Option<String>,
     sort_order: Option<String>,
     status: Option<String>,
@@ -183,23 +203,137 @@ struct UpdateCategoryBody {
 struct CreateAttributeBody {
     attribute_no: String,
     name: String,
+    value_type: String,
+    input_hint: String,
+    is_multi_value: Option<bool>,
+    unit_symbol: Option<String>,
+    sort_order: Option<String>,
     values: Option<Vec<String>>,
+}
+
+/// Update-attribute body.
+///
+/// The type facts (`valueType`, `inputHint`, `isMultiValue`) are deliberately absent: changing an
+/// attribute's type after values exist would strand every stored value that no longer fits. The
+/// mutable surface is the display name, the unit, the ordering, and the lifecycle status.
+///
+/// `unit_symbol` is three-state through [`deserialize_present_option`]: an omitted key leaves the
+/// stored unit alone and an explicit `null` removes it.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UpdateAttributeBody {
+    name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    unit_symbol: Option<Option<String>>,
+    sort_order: Option<String>,
+    status: Option<String>,
+}
+
+/// Query parameters for one attribute's dictionary values.
+///
+/// `attribute_id` is required: values only mean something inside one attribute's editor.
+#[derive(Debug, Deserialize)]
+pub struct AttributeValueQueryParams {
+    pub attribute_id: String,
+    pub status: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CreateAttributeValueBody {
+    attribute_id: String,
+    value_code: String,
+    display_value: String,
+    color_hex: Option<String>,
+    media_resource_id: Option<String>,
+    sort_order: Option<String>,
+}
+
+/// Update-attribute-value body.
+///
+/// `color_hex` and `media_resource_id` are three-state: both columns are nullable, so a stated
+/// `null` removes the swatch or the picture while an omitted key keeps it. The identity pair
+/// (`attributeId`, `valueCode`) is absent on purpose — moving a value between attributes or
+/// renaming its key is a delete plus a create, not an edit.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UpdateAttributeValueBody {
+    display_value: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    color_hex: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    media_resource_id: Option<Option<String>>,
+    sort_order: Option<String>,
+    status: Option<String>,
+}
+
+/// One entry of a product attribute-set replacement body.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProductAttributeValueInputBody {
+    pub attribute_id: String,
+    pub role: String,
+    pub attribute_value_id: Option<String>,
+    pub raw_value: Option<String>,
+    pub sort_order: Option<String>,
+}
+
+/// Replace-product-attributes body.
+///
+/// The set is replaced whole, not patched: the detail page renders it as one table, and a partial
+/// edit cannot express "this product no longer lists a warranty term". The write is guarded by the
+/// product's `If-Match`, because the set is part of the product aggregate.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplaceProductAttributesBody {
+    pub attributes: Vec<ProductAttributeValueInputBody>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CreatePriceListBody {
     price_list_no: String,
+    name: String,
     currency_code: String,
     market_code: Option<String>,
+    customer_segment: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UpdatePriceListBody {
+    name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    customer_segment: Option<Option<String>>,
     status: Option<String>,
     starts_at: Option<String>,
     ends_at: Option<String>,
+}
+
+/// Create-body for one priced row of a price list.
+///
+/// The list is the currency authority: `currencyCode` and the scale are inherited from the list
+/// row inside the transaction, so the body cannot quote money the list does not deal in.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreatePriceListItemBody {
+    pub list_id: String,
+    pub sku_id: String,
+    pub price_minor: String,
+    pub min_quantity: Option<String>,
+}
+
+/// Update-body for one priced row. The identity pair (`priceListId`, `skuId`, `minQuantity` as
+/// a tier key) is carried as mutable `minQuantity` only: moving a row to another list is a
+/// delete plus a create.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdatePriceListItemBody {
+    pub price_minor: Option<String>,
+    pub min_quantity: Option<String>,
+    pub status: Option<String>,
 }
 
 /// Create-body for one category attribute binding.
@@ -250,6 +384,11 @@ pub struct CreateSpuBody {
     pub description: Option<String>,
     pub product_type: String,
     pub category_id: String,
+    pub model_no: Option<String>,
+    pub barcode: Option<String>,
+    pub weight_gram: Option<String>,
+    pub volume_ml: Option<String>,
+    pub tax_class_code: Option<String>,
 }
 
 /// Update-SPU body.
@@ -267,6 +406,18 @@ pub struct UpdateSpuBody {
     #[serde(default, deserialize_with = "deserialize_present_option")]
     pub description: Option<Option<String>>,
     pub category_id: Option<String>,
+    /// The five fixed-semantics columns are three-state: an explicit `null` removes the value,
+    /// an omitted key keeps it.
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub model_no: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub barcode: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub weight_gram: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub volume_ml: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub tax_class_code: Option<Option<String>>,
     /// Lifecycle status as a storage token. The handler decodes it through `ProductStatus`, so an
     /// unknown token is a named `422` at the boundary rather than a `23514` from the CHECK.
     pub status: Option<String>,
@@ -291,9 +442,13 @@ struct CreateSkuBody {
     title: String,
     sale_price_minor: String,
     list_price_minor: Option<String>,
+    cost_price_minor: Option<String>,
+    barcode: Option<String>,
+    weight_gram: Option<String>,
     currency_code: String,
     fulfillment_type: String,
     inventory_tracking: String,
+    inventory_policy: String,
     attribute_value_ids: Option<Vec<String>>,
 }
 
@@ -312,9 +467,16 @@ struct UpdateSkuBody {
     sale_price_minor: Option<String>,
     #[serde(default, deserialize_with = "deserialize_present_option")]
     list_price_minor: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    cost_price_minor: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    barcode: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    weight_gram: Option<Option<String>>,
     currency_code: Option<String>,
     fulfillment_type: Option<String>,
     inventory_tracking: Option<String>,
+    inventory_policy: Option<String>,
     status: Option<String>,
     attribute_value_ids: Option<Vec<String>>,
 }
@@ -376,9 +538,15 @@ struct UpdateMediaBody {
 pub struct CategoryResponse {
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    tenant_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    organization_id: i64,
     category_no: String,
     #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
     parent_id: Option<i64>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    back_parent_id: Option<i64>,
     path: String,
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     depth: i64,
@@ -406,6 +574,9 @@ pub struct AttributeResponse {
     attribute_no: String,
     name: String,
     value_type: String,
+    input_hint: String,
+    is_multi_value: bool,
+    unit_symbol: Option<String>,
     status: String,
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     sort_order: i64,
@@ -420,11 +591,107 @@ pub struct AttributeResponse {
     version: i64,
 }
 
+/// One dictionary value of an `enum` attribute, on the wire.
+///
+/// `colorHex` is the swatch a console renders and `mediaResourceId` the picture behind it; both are
+/// optional because not every value has one.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttributeValueResponse {
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    attribute_id: i64,
+    value_code: String,
+    display_value: String,
+    color_hex: Option<String>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    media_resource_id: Option<i64>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    sort_order: i64,
+    status: String,
+    created_at: String,
+    updated_at: String,
+    /// Monotonic row version, bumped by every write to the row.
+    ///
+    /// This is the number `If-Match` expects on the next update or delete, and the same value the
+    /// response's `ETag` carries. `API_SPEC` section 17 makes the row version the precondition for
+    /// optimistic concurrency, so a client that has read a resource can always name what it read.
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    version: i64,
+}
+
+/// One key/parameter attribute value of a product, as published inside [`ProductResponse`].
+///
+/// The `View` suffix, not `Response`, is load-bearing for the same reason it is on
+/// [`SkuAxisView`]: this is a nested read model with no resource schema of its own.
+///
+/// The value is spelled two ways on one row: `attributeValueId` + `displayValue` for a dictionary
+/// value, or `rawValue` for the free-text spellings the dictionary does not hold. Exactly one of
+/// the two carriers is present, which is what `ck_commerce_product_spu_attribute_carrier` enforces
+/// in storage.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductAttributeView {
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    attribute_id: i64,
+    attribute_no: String,
+    attribute_name: String,
+    attribute_role: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    attribute_value_id: Option<i64>,
+    display_value: Option<String>,
+    raw_value: Option<String>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    sort_order: i64,
+}
+
+/// The payload of a product attribute-set replacement: the set as stored after the write.
+///
+/// The `ETag` the response carries is the **product's** version, not a version of this payload —
+/// the set is part of the product aggregate, so the product row is the row whose version advanced.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductAttributesResponse {
+    attributes: Vec<ProductAttributeView>,
+    /// The product row's version after the replacement. The set is part of the product aggregate,
+    /// so this is the number the next `If-Match` on the product must name.
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    version: i64,
+}
+
+/// Maps the repository's replacement outcome onto the wire payload.
+pub fn map_product_attributes(
+    value: sdkwork_merchandise_service::ProductAttributesWrite,
+) -> ProductAttributesResponse {
+    ProductAttributesResponse {
+        attributes: value
+            .attributes
+            .into_iter()
+            .map(|attribute| ProductAttributeView {
+                attribute_id: attribute.attribute_id,
+                attribute_no: attribute.attribute_no,
+                attribute_name: attribute.attribute_name,
+                attribute_role: attribute.attribute_role,
+                attribute_value_id: attribute.attribute_value_id,
+                display_value: attribute.display_value,
+                raw_value: attribute.raw_value,
+                sort_order: attribute.sort_order,
+            })
+            .collect(),
+        version: value.version,
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductResponse {
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    tenant_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    organization_id: i64,
     product_no: String,
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     category_id: i64,
@@ -433,11 +700,21 @@ pub struct ProductResponse {
     subtitle: Option<String>,
     description: Option<String>,
     product_type: String,
+    model_no: Option<String>,
+    barcode: Option<String>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    weight_gram: Option<i64>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    volume_ml: Option<i64>,
+    tax_class_code: Option<String>,
     status: String,
     sales_status: String,
     published_at: Option<String>,
     created_at: String,
     updated_at: String,
+    /// Always present, empty when the product declares no key/parameter attributes. A list rather
+    /// than a nullable field, so "no specifications" and "not loaded" never look the same.
+    attributes: Vec<ProductAttributeView>,
     /// Monotonic row version, bumped by every write to the row.
     ///
     /// This is the number `If-Match` expects on the next update or delete, and the same value the
@@ -477,12 +754,18 @@ pub struct SkuResponse {
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     id: i64,
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    tenant_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    organization_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
     product_id: i64,
     sku_no: String,
     variant_signature: String,
     name: Option<String>,
     title: Option<String>,
     currency_code: String,
+    /// The currency's display symbol, resolved from the currency table at read time.
+    currency_symbol: String,
     /// Published as `minorUnitExponent`. `priceScale` is classified as money by the `API_SPEC`
     /// section 13.2 validator, and this value is a unit exponent, not an amount.
     #[serde(rename = "minorUnitExponent", with = "sdkwork_utils_rust::serde_int64")]
@@ -491,8 +774,18 @@ pub struct SkuResponse {
     sale_price_minor: i64,
     #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
     list_price_minor: Option<i64>,
+    /// The cost of acquiring one unit, in the same minor unit. It is what a margin needs and is
+    /// never shown to a buyer.
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    cost_price_minor: Option<i64>,
+    barcode: Option<String>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    weight_gram: Option<i64>,
     fulfillment_type: String,
     inventory_tracking: String,
+    /// What happens when the tracked stock runs out. `backorder` is only legal on a tracked
+    /// SKU, which the baseline CHECK enforces.
+    inventory_policy: String,
     status: String,
     sales_status: String,
     published_at: Option<String>,
@@ -522,7 +815,10 @@ pub struct PriceListResponse {
     price_list_no: String,
     name: String,
     currency_code: String,
+    /// The currency's display symbol, resolved from the currency table at read time.
+    currency_symbol: String,
     market_code: Option<String>,
+    customer_segment: Option<String>,
     status: String,
     starts_at: Option<String>,
     ends_at: Option<String>,
@@ -571,6 +867,57 @@ pub struct CategoryAttributeResponse {
     version: i64,
 }
 
+/// One priced row of a price list, on the wire.
+///
+/// `currencyCode` and `minorUnitExponent` are the list's currency snapshot: the
+/// composite foreign key guarantees the row cannot quote money its list does not deal in.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceListItemResponse {
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    list_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    sku_id: i64,
+    currency_code: String,
+    /// Published as `minorUnitExponent`: a unit exponent, not an amount.
+    #[serde(rename = "minorUnitExponent", with = "sdkwork_utils_rust::serde_int64")]
+    price_scale: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    price_minor: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    min_quantity: i64,
+    status: String,
+    created_at: String,
+    updated_at: String,
+    /// Monotonic row version, bumped by every write to the row.
+    ///
+    /// This is the number `If-Match` expects on the next update or delete, and the same value the
+    /// response's `ETag` carries. `API_SPEC` section 17 makes the row version the precondition for
+    /// optimistic concurrency, so a client that has read a resource can always name what it read.
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    version: i64,
+}
+
+pub fn map_price_list_item(
+    value: sdkwork_merchandise_service::PriceListItemRecord,
+) -> PriceListItemResponse {
+    PriceListItemResponse {
+        id: value.id,
+        list_id: value.price_list_id,
+        sku_id: value.sku_id,
+        currency_code: value.currency_code,
+        price_scale: value.price_scale,
+        price_minor: value.price_minor,
+        min_quantity: value.min_quantity,
+        status: value.status,
+        created_at: value.created_at,
+        version: value.version,
+        updated_at: value.updated_at,
+    }
+}
+
 /// One media attachment on the wire.
 ///
 /// `mediaResourceId` is the stable Drive identity and `resourceSnapshot` is the read-model
@@ -609,8 +956,11 @@ pub struct MediaResponse {
 pub fn map_category(value: CategoryRecord) -> CategoryResponse {
     CategoryResponse {
         id: value.id,
+        tenant_id: value.tenant_id,
+        organization_id: value.organization_id,
         category_no: value.category_no,
         parent_id: value.parent_id,
+        back_parent_id: value.back_parent_id,
         path: value.path,
         depth: value.depth,
         is_leaf: value.is_leaf,
@@ -629,8 +979,27 @@ pub fn map_attribute(value: AttributeRecord) -> AttributeResponse {
         attribute_no: value.attribute_no,
         name: value.name,
         value_type: value.value_type,
+        input_hint: value.input_hint,
+        is_multi_value: value.is_multi_value,
+        unit_symbol: value.unit_symbol,
         status: value.status,
         sort_order: value.sort_order,
+        created_at: value.created_at,
+        version: value.version,
+        updated_at: value.updated_at,
+    }
+}
+
+pub fn map_attribute_value(value: AttributeValueRecord) -> AttributeValueResponse {
+    AttributeValueResponse {
+        id: value.id,
+        attribute_id: value.attribute_id,
+        value_code: value.value_code,
+        display_value: value.display_value,
+        color_hex: value.color_hex,
+        media_resource_id: value.media_resource_id,
+        sort_order: value.sort_order,
+        status: value.status,
         created_at: value.created_at,
         version: value.version,
         updated_at: value.updated_at,
@@ -645,6 +1014,8 @@ pub fn map_attribute(value: AttributeRecord) -> AttributeResponse {
 pub fn map_product(value: SpuRecord) -> ProductResponse {
     ProductResponse {
         id: value.id,
+        tenant_id: value.tenant_id,
+        organization_id: value.organization_id,
         product_no: value.spu_no,
         category_id: value.category_id,
         name: value.name,
@@ -652,29 +1023,55 @@ pub fn map_product(value: SpuRecord) -> ProductResponse {
         subtitle: value.subtitle,
         description: value.description,
         product_type: value.product_type,
+        model_no: value.model_no,
+        barcode: value.barcode,
+        weight_gram: value.weight_gram,
+        volume_ml: value.volume_ml,
+        tax_class_code: value.tax_class_code,
         status: value.status,
         sales_status: value.sales_status,
         published_at: value.published_at,
         created_at: value.created_at,
         version: value.version,
         updated_at: value.updated_at,
+        attributes: value
+            .attributes
+            .into_iter()
+            .map(|attribute| ProductAttributeView {
+                attribute_id: attribute.attribute_id,
+                attribute_no: attribute.attribute_no,
+                attribute_name: attribute.attribute_name,
+                attribute_role: attribute.attribute_role,
+                attribute_value_id: attribute.attribute_value_id,
+                display_value: attribute.display_value,
+                raw_value: attribute.raw_value,
+                sort_order: attribute.sort_order,
+            })
+            .collect(),
     }
 }
 
 pub fn map_sku(value: SkuRecord) -> SkuResponse {
     SkuResponse {
         id: value.id,
+        tenant_id: value.tenant_id,
+        organization_id: value.organization_id,
         product_id: value.spu_id,
         sku_no: value.sku_no,
         variant_signature: value.variant_signature,
         name: value.name,
         title: value.title,
         currency_code: value.currency_code,
+        currency_symbol: value.currency_symbol,
         price_scale: value.price_scale,
         sale_price_minor: value.sale_price_minor,
         list_price_minor: value.list_price_minor,
+        cost_price_minor: value.cost_price_minor,
+        barcode: value.barcode,
+        weight_gram: value.weight_gram,
         fulfillment_type: value.fulfillment_type,
         inventory_tracking: value.inventory_tracking,
+        inventory_policy: value.inventory_policy,
         status: value.status,
         sales_status: value.sales_status,
         published_at: value.published_at,
@@ -720,7 +1117,9 @@ fn map_price_list(value: PriceListRecord) -> PriceListResponse {
         price_list_no: value.price_list_no,
         name: value.name,
         currency_code: value.currency_code,
+        currency_symbol: value.currency_symbol,
         market_code: value.market_code,
+        customer_segment: value.customer_segment,
         status: value.status,
         starts_at: value.starts_at,
         ends_at: value.ends_at,

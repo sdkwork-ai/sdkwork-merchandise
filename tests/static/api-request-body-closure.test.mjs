@@ -256,6 +256,20 @@ const MONEY_BINDINGS = [
     type: "Option<i64>",
   },
   {
+    schema: "CreatePriceListItemRequest",
+    property: "priceMinor",
+    command: "CreatePriceListItemCommand",
+    field: "price_minor",
+    type: "i64",
+  },
+  {
+    schema: "UpdatePriceListItemRequest",
+    property: "priceMinor",
+    command: "UpdatePriceListItemCommand",
+    field: "price_minor",
+    type: "Option<i64>",
+  },
+  {
     schema: "UpdateSkuRequest",
     property: "salePriceMinor",
     command: "UpdateProductSkuCommand",
@@ -271,6 +285,34 @@ const MONEY_BINDINGS = [
     // "the key was absent" and the inner one is "the value was null". A plain `Option<i64>` would
     // make "leave the reference price alone" and "clear it" the same instruction.
     type: "Option<Option<i64>>",
+  },
+  {
+    schema: "CreateSkuRequest",
+    property: "costPriceMinor",
+    command: "CreateProductSkuCommand",
+    field: "cost_price_minor",
+    type: "Option<i64>",
+  },
+  {
+    schema: "UpdateSkuRequest",
+    property: "costPriceMinor",
+    command: "UpdateProductSkuCommand",
+    field: "cost_price_minor",
+    type: "Option<Option<i64>>",
+  },
+  {
+    schema: "CreatePriceListItemRequest",
+    property: "priceMinor",
+    command: "CreatePriceListItemCommand",
+    field: "price_minor",
+    type: "i64",
+  },
+  {
+    schema: "UpdatePriceListItemRequest",
+    property: "priceMinor",
+    command: "UpdatePriceListItemCommand",
+    field: "price_minor",
+    type: "Option<i64>",
   },
 ];
 
@@ -372,6 +414,48 @@ const ENUM_BINDINGS = [
     table: "commerce_product_media",
     column: "status",
   },
+  {
+    schema: "CreateAttributeRequest",
+    property: "valueType",
+    table: "commerce_product_attribute",
+    column: "value_type",
+  },
+  {
+    schema: "CreateAttributeRequest",
+    property: "inputHint",
+    table: "commerce_product_attribute",
+    column: "input_hint",
+  },
+  {
+    schema: "UpdateAttributeRequest",
+    property: "status",
+    table: "commerce_product_attribute",
+    column: "status",
+  },
+  {
+    schema: "UpdateAttributeValueRequest",
+    property: "status",
+    table: "commerce_product_attribute_value",
+    column: "status",
+  },
+  {
+    schema: "CreateSkuRequest",
+    property: "inventoryPolicy",
+    table: "commerce_product_sku",
+    column: "inventory_policy",
+  },
+  {
+    schema: "UpdateSkuRequest",
+    property: "inventoryPolicy",
+    table: "commerce_product_sku",
+    column: "inventory_policy",
+  },
+  {
+    schema: "UpdatePriceListItemRequest",
+    property: "status",
+    table: "commerce_price_list_item",
+    column: "status",
+  },
 ];
 
 /**
@@ -424,8 +508,43 @@ const LENGTH_BINDINGS = [
     column: "display_value",
   },
   {
+    schema: "UpdateAttributeRequest",
+    property: "name",
+    constant: "ATTRIBUTE_NAME_MAX_CHARS",
+    table: "commerce_product_attribute",
+    column: "name",
+  },
+  {
+    schema: "CreateAttributeValueRequest",
+    property: "displayValue",
+    constant: "ATTRIBUTE_VALUE_MAX_CHARS",
+    table: "commerce_product_attribute_value",
+    column: "display_value",
+  },
+  {
+    schema: "UpdateAttributeValueRequest",
+    property: "displayValue",
+    constant: "ATTRIBUTE_VALUE_MAX_CHARS",
+    table: "commerce_product_attribute_value",
+    column: "display_value",
+  },
+  {
     schema: "CreatePriceListRequest",
     property: "priceListNo",
+    constant: "PRICE_LIST_NO_MAX_CHARS",
+    table: "commerce_price_list",
+    column: "name",
+  },
+  {
+    schema: "CreatePriceListRequest",
+    property: "name",
+    constant: "PRICE_LIST_NO_MAX_CHARS",
+    table: "commerce_price_list",
+    column: "name",
+  },
+  {
+    schema: "UpdatePriceListRequest",
+    property: "name",
     constant: "PRICE_LIST_NO_MAX_CHARS",
     table: "commerce_price_list",
     column: "name",
@@ -587,8 +706,14 @@ test("each documented property type matches the Rust field type, int64 included"
       const nullable = inner.startsWith("Option<");
       const carried = nullable ? inner.slice("Option<".length, -1) : inner;
 
-      if (carried === "Vec<String>") {
-        if (declared.type !== "array" || declared.items?.type !== "string") {
+      if (carried.startsWith("Vec<")) {
+        if (declared.type !== "array") {
+          problems.push(
+            `${schemaName}.${property} must be an array to match ${dto}.${field.name}: ${field.type}`,
+          );
+          continue;
+        }
+        if (carried === "Vec<String>" && declared.items?.type !== "string") {
           problems.push(
             `${schemaName}.${property} must be an array of strings to match ${dto}.${field.name}: ${field.type}`,
           );
@@ -672,7 +797,8 @@ test("a property whose wire name ends in Id is carried as an int64 string", () =
       document.components.schemas[schemaName].properties ?? {},
     )) {
       if (!/Id$/.test(property)) continue;
-      if (declared.type !== "string" || declared.format !== "int64") {
+      const idTypes = Array.isArray(declared.type) ? declared.type : [declared.type];
+      if (!idTypes.includes("string") || declared.format !== "int64") {
         problems.push(
           `${schemaName}.${property} is an identifier and must be a type-string/format-int64 property`,
         );

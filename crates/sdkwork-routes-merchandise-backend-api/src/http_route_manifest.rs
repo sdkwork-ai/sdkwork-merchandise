@@ -14,6 +14,12 @@ const HTTP_ROUTES: &[HttpRoute] = &[
         "categories.create",
     ),
     HttpRoute::dual_token(
+        HttpMethod::Get,
+        "/backend/v3/api/catalog/categories/{categoryId}",
+        "merchandise",
+        "categories.management.retrieve",
+    ),
+    HttpRoute::dual_token(
         HttpMethod::Patch,
         "/backend/v3/api/catalog/categories/{categoryId}",
         "merchandise",
@@ -80,6 +86,12 @@ const HTTP_ROUTES: &[HttpRoute] = &[
         "skus.create",
     ),
     HttpRoute::dual_token(
+        HttpMethod::Get,
+        "/backend/v3/api/catalog/skus/{skuId}",
+        "merchandise",
+        "skus.retrieve",
+    ),
+    HttpRoute::dual_token(
         HttpMethod::Patch,
         "/backend/v3/api/catalog/skus/{skuId}",
         "merchandise",
@@ -140,6 +152,12 @@ const HTTP_ROUTES: &[HttpRoute] = &[
         "priceLists.create",
     ),
     HttpRoute::dual_token(
+        HttpMethod::Get,
+        "/backend/v3/api/catalog/price_lists/{priceListId}",
+        "merchandise",
+        "priceLists.retrieve",
+    ),
+    HttpRoute::dual_token(
         HttpMethod::Patch,
         "/backend/v3/api/catalog/price_lists/{priceListId}",
         "merchandise",
@@ -168,6 +186,72 @@ const HTTP_ROUTES: &[HttpRoute] = &[
         "/backend/v3/api/catalog/media/{mediaId}",
         "merchandise",
         "media.delete",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Get,
+        "/backend/v3/api/catalog/attributes/{attributeId}",
+        "merchandise",
+        "attributes.management.retrieve",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Patch,
+        "/backend/v3/api/catalog/attributes/{attributeId}",
+        "merchandise",
+        "attributes.update",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Get,
+        "/backend/v3/api/catalog/attribute_values",
+        "merchandise",
+        "attributeValues.list",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Post,
+        "/backend/v3/api/catalog/attribute_values",
+        "merchandise",
+        "attributeValues.create",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Patch,
+        "/backend/v3/api/catalog/attribute_values/{valueId}",
+        "merchandise",
+        "attributeValues.update",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Delete,
+        "/backend/v3/api/catalog/attribute_values/{valueId}",
+        "merchandise",
+        "attributeValues.delete",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Put,
+        "/backend/v3/api/catalog/products/{productId}/attributes",
+        "merchandise",
+        "products.attributes.update",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Get,
+        "/backend/v3/api/catalog/price_list_items",
+        "merchandise",
+        "priceListItems.list",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Post,
+        "/backend/v3/api/catalog/price_list_items",
+        "merchandise",
+        "priceListItems.create",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Patch,
+        "/backend/v3/api/catalog/price_list_items/{itemId}",
+        "merchandise",
+        "priceListItems.update",
+    ),
+    HttpRoute::dual_token(
+        HttpMethod::Delete,
+        "/backend/v3/api/catalog/price_list_items/{itemId}",
+        "merchandise",
+        "priceListItems.delete",
     ),
 ];
 

@@ -45,17 +45,22 @@ use sdkwork_commerce_money::MoneyUnit;
 use sdkwork_contract_service::CommerceServiceError;
 use sdkwork_database_id::IdGenerator;
 use sdkwork_merchandise_service::{
-    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRole,
-    CategoryAttributeListQuery, CategoryAttributeRecord, CategoryListQuery, CategoryRecord,
-    CategoryRetrieveQuery, CreateAttributeCommand, CreateCategoryAttributeCommand,
-    CreateCategoryCommand, CreateMediaCommand, CreatePriceListCommand, CreateProductSkuCommand,
-    CreateProductSpuCommand, DeleteCategoryAttributeCommand, DeleteCategoryCommand,
-    DeleteMediaCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, GuardedWrite,
-    LifecycleStatus, MediaListQuery, MediaOwnerType, MediaRecord, PriceListListQuery,
-    PriceListRecord, ProductSkuListQuery, ProductSkuRetrieveQuery, ProductSpuListQuery,
-    ProductSpuRetrieveQuery, ProductStatus, PublishSpuCommand, SkuAxisRecord, SkuRecord, SpuRecord,
-    StaleVersion, UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
-    UpdatePriceListCommand, UpdateProductSkuCommand, UpdateProductSpuCommand,
+    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRetrieveQuery, PriceListRetrieveQuery, AttributeRole, AttributeValueListQuery,
+    AttributeValueRecord, CategoryAttributeListQuery, CategoryAttributeRecord, CategoryListQuery,
+    CategoryRecord, CategoryRetrieveQuery, CreateAttributeCommand, CreateAttributeValueCommand,
+    CreateCategoryAttributeCommand, CreateCategoryCommand, CreateMediaCommand,
+    CreatePriceListCommand, CreatePriceListItemCommand, CreateProductSkuCommand,
+    CreateProductSpuCommand, DeleteAttributeValueCommand, DeleteCategoryAttributeCommand,
+    DeleteCategoryCommand, DeleteMediaCommand, DeletePriceListItemCommand, DeleteProductSkuCommand,
+    DeleteProductSpuCommand, GuardedWrite, LifecycleStatus, MediaListQuery, MediaOwnerType,
+    MediaRecord, PriceListItemListQuery, PriceListItemRecord, PriceListListQuery, PriceListRecord,
+    ProductAttributesRetrieveQuery, ProductAttributesWrite, ProductSkuListQuery,
+    ProductSkuRetrieveQuery, ProductSpuListQuery, ProductSpuRetrieveQuery, ProductStatus,
+    PublishSpuCommand, ReplaceProductAttributesCommand, SkuAxisRecord, SkuRecord,
+    SpuAttributeRecord, SpuRecord, StaleVersion, UpdateAttributeCommand,
+    UpdateAttributeValueCommand, UpdateCategoryAttributeCommand, UpdateCategoryCommand,
+    UpdateMediaCommand, UpdatePriceListCommand, UpdatePriceListItemCommand,
+    UpdateProductSkuCommand, UpdateProductSpuCommand,
 };
 use serde_json::Value;
 use sqlx::{PgPool, Postgres, Row, Transaction};
@@ -69,15 +74,15 @@ use sdkwork_merchandise_service::validation::SKU_VARIANT_SIGNATURE_MAX_CHARS;
 
 macro_rules! category_columns {
     () => {
-        "id, tenant_id, organization_id, category_no, parent_id, path, depth, is_leaf, name, \
-         sort_order, status, version, created_at, updated_at"
+        "id, tenant_id, organization_id, category_no, parent_id, back_parent_id, path, depth, \
+         is_leaf, name, sort_order, status, version, created_at, updated_at"
     };
 }
 
 macro_rules! attribute_columns {
     () => {
-        "id, tenant_id, organization_id, attribute_no, name, value_type, status, sort_order, \
-         version, created_at, updated_at"
+        "id, tenant_id, organization_id, attribute_no, name, value_type, input_hint, \
+         is_multi_value, unit_symbol, status, sort_order, version, created_at, updated_at"
     };
 }
 
@@ -91,24 +96,25 @@ macro_rules! category_attribute_columns {
 
 macro_rules! price_list_columns {
     () => {
-        "id, tenant_id, organization_id, price_list_no, name, currency_code, market_code, status, \
-         starts_at, ends_at, version, created_at, updated_at"
+        "id, tenant_id, organization_id, price_list_no, name, currency_code, market_code, \
+         customer_segment, status, starts_at, ends_at, version, created_at, updated_at"
     };
 }
 
 macro_rules! spu_columns {
     () => {
         "id, tenant_id, organization_id, spu_no, category_id, name, title, subtitle, description, \
-         product_type, status, sales_status, published_at, version, created_at, updated_at"
+         product_type, model_no, barcode, weight_gram, volume_ml, tax_class_code, status, \
+         sales_status, published_at, version, created_at, updated_at"
     };
 }
 
 macro_rules! sku_columns {
     () => {
         "id, tenant_id, organization_id, spu_id, sku_no, variant_signature, name, title, \
-         currency_code, price_scale, sale_price_minor, list_price_minor, fulfillment_type, \
-         inventory_tracking, status, sales_status, metadata, published_at, version, created_at, \
-         updated_at"
+         currency_code, price_scale, sale_price_minor, list_price_minor, cost_price_minor, \
+         barcode, weight_gram, fulfillment_type, inventory_tracking, inventory_policy, status, \
+         sales_status, metadata, published_at, version, created_at, updated_at"
     };
 }
 
@@ -148,14 +154,15 @@ const RETRIEVE_CATEGORY_SQL: &str = concat!(
 
 const INSERT_CATEGORY_SQL: &str = concat!(
     "INSERT INTO commerce_product_category
-         (id, tenant_id, organization_id, category_no, parent_id, path, depth, name, is_leaf,
-          sort_order, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, 'active')
+         (id, tenant_id, organization_id, category_no, parent_id, back_parent_id, path, depth,
+          name, is_leaf, sort_order, status, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, $10, 'active', $11)
      RETURNING ",
     category_columns!()
 );
 
-const LOCK_CATEGORY_SQL: &str = "SELECT parent_id, path, depth FROM commerce_product_category
+const LOCK_CATEGORY_SQL: &str =
+    "SELECT parent_id, back_parent_id, path, depth FROM commerce_product_category
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
      FOR UPDATE";
 
@@ -193,14 +200,18 @@ const REPOINT_CATEGORY_PARENT_SQL: &str = "UPDATE commerce_product_category
      SET parent_id = $1, updated_at = NOW()
      WHERE tenant_id = $2 AND id = $3";
 
+// `back_parent_id` follows the lock-decide-write shape of the other nullable columns: the update
+// function reads the stored row inside the transaction and binds the decided value, so a stated
+// removal reaches the column as NULL while an omitted key keeps it.
 const UPDATE_CATEGORY_SQL: &str = concat!(
     "UPDATE commerce_product_category
-     SET name = COALESCE($1::TEXT, name),
-         sort_order = COALESCE($2, sort_order),
-         status = COALESCE($3::TEXT, status),
+     SET back_parent_id = $1,
+         name = COALESCE($2::TEXT, name),
+         sort_order = COALESCE($3, sort_order),
+         status = COALESCE($4::TEXT, status),
          version = version + 1,
          updated_at = NOW()
-     WHERE tenant_id = $4 AND id = $5 AND deleted_at IS NULL AND version = $6
+     WHERE tenant_id = $5 AND id = $6 AND deleted_at IS NULL AND version = $7
      RETURNING ",
     category_columns!()
 );
@@ -212,7 +223,7 @@ const COUNT_LIVE_CATEGORY_PRODUCTS_SQL: &str = "SELECT COUNT(*) FROM commerce_pr
      WHERE tenant_id = $1 AND category_id = $2 AND deleted_at IS NULL";
 
 const SOFT_DELETE_CATEGORY_SQL: &str = "UPDATE commerce_product_category
-     SET deleted_at = NOW(), status = 'inactive', version = version + 1, updated_at = NOW()
+     SET deleted_at = NOW(), status = 'inactive', deleted_by = $4, version = version + 1, updated_at = NOW()
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3";
 
 const LIST_ATTRIBUTES_SQL: &str = concat!(
@@ -236,10 +247,42 @@ const COUNT_ATTRIBUTES_SQL: &str = "SELECT COUNT(*) FROM commerce_product_attrib
 const INSERT_ATTRIBUTE_SQL: &str = concat!(
     "INSERT INTO commerce_product_attribute
          (id, tenant_id, organization_id, attribute_no, name, value_type, input_hint,
-          is_multi_value, sort_order, status)
-     VALUES ($1, $2, $3, $4, $5, 'enum', 'select', FALSE, 0, 'active')
+          is_multi_value, unit_symbol, sort_order, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
      RETURNING ",
     attribute_columns!()
+);
+
+// `unit_symbol` is nullable, so `COALESCE` cannot tell "not mentioned" from "clear". The update
+// therefore follows the SKU's shape: lock the row, decide every field in Rust against the stored
+// values, and write the decided values in one guarded statement. `value_type`, `input_hint`, and
+// `is_multi_value` are create-time facts with no update path — see `UpdateAttributeCommand`.
+const UPDATE_ATTRIBUTE_SQL: &str = concat!(
+    "UPDATE commerce_product_attribute
+     SET name = $1,
+         unit_symbol = $2,
+         sort_order = $3,
+         status = $4,
+         version = version + 1,
+         updated_at = NOW()
+     WHERE tenant_id = $5 AND id = $6 AND deleted_at IS NULL AND version = $7
+     RETURNING ",
+    attribute_columns!()
+);
+
+const RETRIEVE_ATTRIBUTE_SQL: &str = concat!(
+    "SELECT ",
+    attribute_columns!(),
+    " FROM commerce_product_attribute
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL"
+);
+
+const LOCK_ATTRIBUTE_SQL: &str = concat!(
+    "SELECT ",
+    attribute_columns!(),
+    " FROM commerce_product_attribute
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+     FOR UPDATE"
 );
 
 const INSERT_ATTRIBUTE_VALUE_SQL: &str = "INSERT INTO commerce_product_attribute_value
@@ -248,6 +291,158 @@ const INSERT_ATTRIBUTE_VALUE_SQL: &str = "INSERT INTO commerce_product_attribute
      VALUES ($1, $2, $3, $4, $5, $5, $6, 'active')
      ON CONFLICT (tenant_id, attribute_id, value_code) WHERE deleted_at IS NULL
      DO NOTHING";
+
+// ------------------------------------------------------------------ attribute value dictionary
+//
+// The dictionary is where an `enum` attribute's options live, together with the presentation
+// metadata a console renders them with (`color_hex` swatch, `media_resource_id` picture). Values
+// are addressed by their own id; the attribute behind the id is re-read inside the write
+// transaction so a value cannot be created on, or moved to, an attribute the caller did not mean.
+
+macro_rules! attribute_value_columns {
+    () => {
+        "id, tenant_id, organization_id, attribute_id, value_code, display_value, color_hex, \
+         media_resource_id, sort_order, status, version, created_at, updated_at"
+    };
+}
+
+const LIST_ATTRIBUTE_VALUES_SQL: &str = concat!(
+    "SELECT ",
+    attribute_value_columns!(),
+    " FROM commerce_product_attribute_value
+     WHERE tenant_id = $1
+       AND attribute_id = $2
+       AND deleted_at IS NULL
+       AND ($3::BIGINT IS NULL OR organization_id = $3)
+       AND ($4::TEXT IS NULL OR status = $4)
+     ORDER BY sort_order ASC, id ASC
+     LIMIT $5 OFFSET $6"
+);
+
+const COUNT_ATTRIBUTE_VALUES_SQL: &str = "SELECT COUNT(*) FROM commerce_product_attribute_value
+     WHERE tenant_id = $1
+       AND attribute_id = $2
+       AND deleted_at IS NULL
+       AND ($3::BIGINT IS NULL OR organization_id = $3)
+       AND ($4::TEXT IS NULL OR status = $4)";
+
+const INSERT_DICTIONARY_VALUE_SQL: &str = concat!(
+    "INSERT INTO commerce_product_attribute_value
+         (id, tenant_id, organization_id, attribute_id, value_code, display_value, color_hex,
+          media_resource_id, sort_order, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+     RETURNING ",
+    attribute_value_columns!()
+);
+
+// Same shape as the attribute update: `color_hex` and `media_resource_id` are nullable, so the
+// locked-row-decide-write pattern is what lets a stated clear reach the column as NULL while an
+// omitted field keeps the stored value.
+const UPDATE_ATTRIBUTE_VALUE_SQL: &str = concat!(
+    "UPDATE commerce_product_attribute_value
+     SET display_value = $1,
+         color_hex = $2,
+         media_resource_id = $3,
+         sort_order = $4,
+         status = $5,
+         version = version + 1,
+         updated_at = NOW()
+     WHERE tenant_id = $6 AND id = $7 AND deleted_at IS NULL AND version = $8
+     RETURNING ",
+    attribute_value_columns!()
+);
+
+const LOCK_ATTRIBUTE_VALUE_SQL: &str = concat!(
+    "SELECT ",
+    attribute_value_columns!(),
+    " FROM commerce_product_attribute_value
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+     FOR UPDATE"
+);
+
+const SOFT_DELETE_ATTRIBUTE_VALUE_SQL: &str = "UPDATE commerce_product_attribute_value
+     SET deleted_at = NOW(), status = 'inactive', deleted_by = $4, version = version + 1, updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3";
+
+/// A dictionary value a live SKU variant still sits on cannot be retired: the variant would keep
+/// selling in a colour the dictionary no longer declares.
+const VALUE_ON_LIVE_SKU_AXIS_SQL: &str = "SELECT EXISTS (
+     SELECT 1 FROM commerce_product_sku_attribute sa
+     JOIN commerce_product_sku sku ON sku.id = sa.sku_id
+     WHERE sa.tenant_id = $1
+       AND sa.attribute_value_id = $2
+       AND sa.deleted_at IS NULL
+       AND sku.deleted_at IS NULL)";
+
+// ------------------------------------------------------------------ product attribute set
+//
+// `commerce_product_spu_attribute` is the SPU's key/parameter value set — the specification table a
+// product detail page renders. The write path is whole-set replacement guarded on the SPU's version,
+// because the set is part of the product aggregate: two concurrent editors of one product must not
+// both succeed, and the SPU row's version is what an editor's `If-Match` names.
+
+const LIST_SPU_ATTRIBUTES_SQL: &str = "SELECT pa.attribute_id, a.attribute_no,
+            a.name AS attribute_name, pa.attribute_role, pa.attribute_value_id,
+            av.display_value, pa.raw_value, pa.sort_order
+     FROM commerce_product_spu_attribute pa
+     JOIN commerce_product_attribute a ON a.id = pa.attribute_id
+     LEFT JOIN commerce_product_attribute_value av ON av.id = pa.attribute_value_id
+     WHERE pa.tenant_id = $1
+       AND pa.spu_id = $2
+       AND pa.deleted_at IS NULL
+       AND a.deleted_at IS NULL
+     ORDER BY pa.sort_order ASC, pa.attribute_id ASC";
+
+/// Batch-loads the attribute sets of a page of SPUs in one statement — the same `ANY($2)` shape the
+/// SKU axis loader uses, so a list page pays one extra query, not one per product.
+const LIST_SPU_ATTRIBUTES_FOR_SPUS_SQL: &str = "SELECT pa.spu_id, pa.attribute_id,
+            a.attribute_no, a.name AS attribute_name, pa.attribute_role,
+            pa.attribute_value_id, av.display_value, pa.raw_value, pa.sort_order
+     FROM commerce_product_spu_attribute pa
+     JOIN commerce_product_attribute a ON a.id = pa.attribute_id
+     LEFT JOIN commerce_product_attribute_value av ON av.id = pa.attribute_value_id
+     WHERE pa.tenant_id = $1
+       AND pa.spu_id = ANY($2)
+       AND pa.deleted_at IS NULL
+       AND a.deleted_at IS NULL
+     ORDER BY pa.spu_id ASC, pa.sort_order ASC, pa.attribute_id ASC";
+
+const SPU_EXISTS_SQL: &str = "SELECT id, organization_id, category_id FROM commerce_product_spu
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+     FOR UPDATE";
+
+const CATEGORY_BINDING_ROLE_SQL: &str =
+    "SELECT attribute_role FROM commerce_product_category_attribute
+     WHERE tenant_id = $1
+       AND category_id = $2
+       AND attribute_id = $3
+       AND status = 'active'
+       AND deleted_at IS NULL";
+
+const ATTRIBUTE_TYPE_SQL: &str = "SELECT value_type FROM commerce_product_attribute
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND status = 'active'";
+
+const DICTIONARY_VALUE_ON_ATTRIBUTE_SQL: &str = "SELECT id FROM commerce_product_attribute_value
+     WHERE tenant_id = $1 AND id = $2 AND attribute_id = $3
+       AND deleted_at IS NULL AND status = 'active'";
+
+const SOFT_DELETE_SPU_ATTRIBUTES_SQL: &str = "UPDATE commerce_product_spu_attribute
+     SET deleted_at = NOW(), updated_at = NOW()
+     WHERE tenant_id = $1 AND spu_id = $2 AND deleted_at IS NULL";
+
+const INSERT_SPU_ATTRIBUTE_SQL: &str = "INSERT INTO commerce_product_spu_attribute
+         (id, tenant_id, organization_id, spu_id, attribute_id, attribute_value_id, raw_value,
+          attribute_role, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)";
+
+// The set is part of the product aggregate, so the replacement advances the SPU row's version under
+// the caller's precondition — the same statement that decides "applied" or "stale" is the one that
+// moves the version. The rest of the SPU row is untouched, which is why this is not
+// `UPDATE_SPU_SQL`.
+const GUARD_SPU_VERSION_SQL: &str = "UPDATE commerce_product_spu
+     SET updated_by = $4, version = version + 1, updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3
+     RETURNING version";
 
 const LIST_PRICE_LISTS_SQL: &str = concat!(
     "SELECT ",
@@ -273,23 +468,127 @@ const COUNT_PRICE_LISTS_SQL: &str = "SELECT COUNT(*) FROM commerce_price_list
 
 const INSERT_PRICE_LIST_SQL: &str = concat!(
     "INSERT INTO commerce_price_list
-         (id, tenant_id, organization_id, price_list_no, name, currency_code, market_code, status)
-     VALUES ($1, $2, $3, $4, $4, $5, $6, 'active')
+         (id, tenant_id, organization_id, price_list_no, name, currency_code, market_code,
+          customer_segment, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
      RETURNING ",
     price_list_columns!()
 );
 
+// `name` and `customer_segment` follow the lock-decide-write shape of the other nullable columns:
+// the update function reads the stored row inside the transaction and binds the decided values, so
+// a stated removal reaches the column as NULL while an omitted key keeps it.
+const RETRIEVE_PRICE_LIST_SQL: &str = concat!(
+    "SELECT ",
+    price_list_columns!(),
+    " FROM commerce_price_list
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL"
+);
+
 const UPDATE_PRICE_LIST_SQL: &str = concat!(
     "UPDATE commerce_price_list
-     SET status = COALESCE($1::TEXT, status),
-         starts_at = COALESCE($2::TIMESTAMPTZ, starts_at),
-         ends_at = COALESCE($3::TIMESTAMPTZ, ends_at),
+     SET name = $1,
+         customer_segment = $2,
+         status = COALESCE($3::TEXT, status),
+         starts_at = COALESCE($4::TIMESTAMPTZ, starts_at),
+         ends_at = COALESCE($5::TIMESTAMPTZ, ends_at),
+         version = version + 1,
+         updated_at = NOW()
+     WHERE tenant_id = $6 AND id = $7 AND deleted_at IS NULL AND version = $8
+     RETURNING ",
+    price_list_columns!()
+);
+
+// ------------------------------------------------------- price list items
+//
+// `commerce_price_list_item` is the priced row of a list: one SKU, one currency (inherited from the
+// list, enforced by the composite foreign key), one ladder step, one amount. The list is the
+// currency authority — an item that quotes different money than its list is exactly the mismatch the
+// two-layer price design exists to prevent — so the create path reads the list row inside the
+// transaction and binds its currency and scale.
+
+macro_rules! price_list_item_columns {
+    () => {
+        "id, tenant_id, organization_id, price_list_id, sku_id, currency_code, price_scale, \
+         price_minor, min_quantity, status, version, created_at, updated_at"
+    };
+}
+
+const LIST_PRICE_LIST_ITEMS_SQL: &str = concat!(
+    "SELECT ",
+    price_list_item_columns!(),
+    " FROM commerce_price_list_item
+     WHERE tenant_id = $1
+       AND price_list_id = $2
+       AND deleted_at IS NULL
+       AND ($3::BIGINT IS NULL OR organization_id = $3)
+       AND ($4::BIGINT IS NULL OR sku_id = $4)
+       AND ($5::TEXT IS NULL OR status = $5)
+     ORDER BY sku_id ASC, min_quantity ASC, id ASC
+     LIMIT $6 OFFSET $7"
+);
+
+const COUNT_PRICE_LIST_ITEMS_SQL: &str = "SELECT COUNT(*) FROM commerce_price_list_item
+     WHERE tenant_id = $1
+       AND price_list_id = $2
+       AND deleted_at IS NULL
+       AND ($3::BIGINT IS NULL OR organization_id = $3)
+       AND ($4::BIGINT IS NULL OR sku_id = $4)
+       AND ($5::TEXT IS NULL OR status = $5)";
+
+/// Locks the list a new ladder step hangs off and reads the money facts the
+/// step inherits.
+///
+/// The list carries the currency; the scale rides the currency master
+/// (`commerce_currency.minor_unit_exponent`), so the join is the authority read
+/// rather than a denormalized copy — a list never quotes an exponent of its own.
+const PRICE_LIST_CURRENCY_SQL: &str = "SELECT l.currency_code, c.minor_unit_exponent AS price_scale
+     FROM commerce_price_list l
+     JOIN commerce_currency c ON c.code = l.currency_code AND c.deleted_at IS NULL
+     WHERE l.tenant_id = $1 AND l.id = $2 AND l.deleted_at IS NULL
+     FOR UPDATE OF l";
+
+const SKU_EXISTS_SQL: &str = "SELECT EXISTS (SELECT 1 FROM commerce_product_sku
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL)";
+
+const INSERT_PRICE_LIST_ITEM_SQL: &str = concat!(
+    "INSERT INTO commerce_price_list_item
+         (id, tenant_id, organization_id, price_list_id, sku_id, currency_code, price_scale,
+          price_minor, min_quantity, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+     RETURNING ",
+    price_list_item_columns!()
+);
+
+// Every column is decided by the caller-side merge against the locked row — none of them is
+// COALESCE'd — because `price_minor` and `min_quantity` are NOT NULL and `status` is the only
+// optional one; the merge keeps "not mentioned" equal to the stored value.
+const UPDATE_PRICE_LIST_ITEM_SQL: &str = concat!(
+    "UPDATE commerce_price_list_item
+     SET price_minor = $1,
+         min_quantity = $2,
+         status = $3,
          version = version + 1,
          updated_at = NOW()
      WHERE tenant_id = $4 AND id = $5 AND deleted_at IS NULL AND version = $6
      RETURNING ",
-    price_list_columns!()
+    price_list_item_columns!()
 );
+
+const LOCK_PRICE_LIST_ITEM_SQL: &str = concat!(
+    "SELECT ",
+    price_list_item_columns!(),
+    " FROM commerce_price_list_item
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+     FOR UPDATE"
+);
+
+const SOFT_DELETE_PRICE_LIST_ITEM_SQL: &str = "UPDATE commerce_price_list_item
+     SET deleted_at = NOW(), status = 'inactive', deleted_by = $4, version = version + 1, updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3";
+
+const PROBE_PRICE_LIST_ITEM_VERSION_SQL: &str = "SELECT version FROM commerce_price_list_item
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL";
 
 // ------------------------------------------------------- category attribute bindings
 //
@@ -347,7 +646,7 @@ const UPDATE_CATEGORY_ATTRIBUTE_SQL: &str = concat!(
 );
 
 const SOFT_DELETE_CATEGORY_ATTRIBUTE_SQL: &str = "UPDATE commerce_product_category_attribute
-     SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
+     SET deleted_at = NOW(), deleted_by = $4, version = version + 1, updated_at = NOW()
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3";
 
 macro_rules! spu_list_select {
@@ -468,8 +767,9 @@ const RETRIEVE_SPU_SQL: &str = concat!(
 const INSERT_SPU_SQL: &str = concat!(
     "INSERT INTO commerce_product_spu
          (id, tenant_id, organization_id, spu_no, category_id, name, title, subtitle, description,
-          product_type, status, sales_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, 'draft', 'inactive')
+          product_type, model_no, barcode, weight_gram, volume_ml, tax_class_code, status,
+          sales_status)
+     VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft', 'inactive')
      RETURNING ",
     spu_columns!()
 );
@@ -487,6 +787,10 @@ const INSERT_SPU_SQL: &str = concat!(
 /// cannot drift apart in what "active" means. `COALESCE($6::TEXT, status)` reads the row's *old*
 /// status in both places, which is what makes "did not mention it" leave the derived columns exactly
 /// where they were instead of re-deriving them at the wrong moment.
+// `model_no`, `barcode`, `weight_gram`, `volume_ml`, and `tax_class_code` follow the
+// lock-decide-write shape of the other nullable columns: the update function reads the stored row
+// inside the transaction and binds the decided values, so a stated removal reaches the column as
+// NULL while an omitted key keeps it.
 const UPDATE_SPU_SQL: &str = concat!(
     "UPDATE commerce_product_spu
      SET title = COALESCE($1::TEXT, title),
@@ -494,22 +798,27 @@ const UPDATE_SPU_SQL: &str = concat!(
          subtitle = COALESCE($2::TEXT, subtitle),
          description = CASE WHEN $3::BOOLEAN THEN $4::TEXT ELSE description END,
          category_id = COALESCE($5, category_id),
-         status = COALESCE($6::TEXT, status),
-         sales_status = CASE WHEN COALESCE($6::TEXT, status) = 'active' THEN 'active'
+         model_no = $6,
+         barcode = $7,
+         weight_gram = $8,
+         volume_ml = $9,
+         tax_class_code = $10,
+         status = COALESCE($11::TEXT, status),
+         sales_status = CASE WHEN COALESCE($11::TEXT, status) = 'active' THEN 'active'
                              ELSE 'inactive' END,
-         published_at = CASE WHEN COALESCE($6::TEXT, status) = 'active'
+         published_at = CASE WHEN COALESCE($11::TEXT, status) = 'active'
                              THEN COALESCE(published_at, NOW())
                              ELSE published_at END,
          version = version + 1,
          updated_at = NOW()
-     WHERE tenant_id = $7 AND id = $8 AND deleted_at IS NULL AND version = $9
+     WHERE tenant_id = $12 AND id = $13 AND deleted_at IS NULL AND version = $14
      RETURNING ",
     spu_columns!()
 );
 
 const SOFT_DELETE_SPU_SQL: &str = "UPDATE commerce_product_spu
      SET deleted_at = NOW(), status = 'inactive', sales_status = 'inactive',
-         version = version + 1, updated_at = NOW()
+         deleted_by = $4, version = version + 1, updated_at = NOW()
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3";
 
 // The cascade that retires a product's SKUs. No guard — the caller's precondition names the
@@ -518,7 +827,7 @@ const SOFT_DELETE_SPU_SQL: &str = "UPDATE commerce_product_spu
 // retired.
 const SOFT_DELETE_SPU_SKUS_SQL: &str = "UPDATE commerce_product_sku
      SET deleted_at = NOW(), status = 'inactive', sales_status = 'inactive',
-         version = version + 1, updated_at = NOW()
+         deleted_by = $3, version = version + 1, updated_at = NOW()
      WHERE tenant_id = $1 AND spu_id = $2 AND deleted_at IS NULL";
 
 const COUNT_LIVE_SPU_SKUS_SQL: &str = "SELECT COUNT(*) FROM commerce_product_sku
@@ -587,9 +896,11 @@ const RETRIEVE_SKU_SQL: &str = concat!(
 const INSERT_SKU_SQL: &str = concat!(
     "INSERT INTO commerce_product_sku
          (id, tenant_id, organization_id, spu_id, sku_no, variant_signature, name, title,
-          currency_code, price_scale, list_price_minor, sale_price_minor, fulfillment_type,
-          inventory_tracking, metadata, status, sales_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'draft', 'inactive')
+          currency_code, price_scale, list_price_minor, sale_price_minor, cost_price_minor,
+          barcode, weight_gram, fulfillment_type, inventory_tracking, inventory_policy, metadata,
+          status, sales_status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+             'draft', 'inactive')
      RETURNING ",
     sku_columns!()
 );
@@ -600,38 +911,46 @@ const INSERT_SKU_SQL: &str = concat!(
 /// variant signature and the replacement axis rows both need them, and they are already in the row
 /// this statement locks: a second query would read the same tuple again, one lock later.
 const LOCK_SKU_SQL: &str = "SELECT currency_code, price_scale, sale_price_minor, list_price_minor,
+            cost_price_minor, barcode, weight_gram, inventory_tracking, inventory_policy,
             spu_id, sku_no, organization_id
      FROM commerce_product_sku
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
      FOR UPDATE";
 
+// `cost_price_minor`, `barcode`, and `weight_gram` are bound with the values the caller-side merge
+// decided, the same way `list_price_minor` is: all three are nullable, so a COALESCE would read
+// "not mentioned" and "clear" as the same NULL.
 const UPDATE_SKU_SQL: &str = concat!(
     "UPDATE commerce_product_sku
      SET name = COALESCE($1::TEXT, name),
          title = COALESCE($2::TEXT, title),
          sale_price_minor = $3,
          list_price_minor = $4,
-         currency_code = $5,
-         price_scale = $6,
-         fulfillment_type = COALESCE($7::TEXT, fulfillment_type),
-         inventory_tracking = COALESCE($8::TEXT, inventory_tracking),
-         metadata = COALESCE($13::JSONB, metadata),
-         status = COALESCE($9::TEXT, status),
-         sales_status = CASE WHEN COALESCE($9::TEXT, status) = 'active' THEN 'active'
+         cost_price_minor = $5,
+         barcode = $6,
+         weight_gram = $7,
+         currency_code = $8,
+         price_scale = $9,
+         fulfillment_type = COALESCE($10::TEXT, fulfillment_type),
+         inventory_tracking = COALESCE($11::TEXT, inventory_tracking),
+         inventory_policy = COALESCE($12::TEXT, inventory_policy),
+         metadata = COALESCE($17::JSONB, metadata),
+         status = COALESCE($13::TEXT, status),
+         sales_status = CASE WHEN COALESCE($13::TEXT, status) = 'active' THEN 'active'
                              ELSE 'inactive' END,
-         published_at = CASE WHEN COALESCE($9::TEXT, status) = 'active'
+         published_at = CASE WHEN COALESCE($13::TEXT, status) = 'active'
                              THEN COALESCE(published_at, NOW())
                              ELSE published_at END,
          version = version + 1,
          updated_at = NOW()
-     WHERE tenant_id = $10 AND id = $11 AND deleted_at IS NULL AND version = $12
+     WHERE tenant_id = $14 AND id = $15 AND deleted_at IS NULL AND version = $16
      RETURNING ",
     sku_columns!()
 );
 
 const SOFT_DELETE_SKU_SQL: &str = "UPDATE commerce_product_sku
      SET deleted_at = NOW(), status = 'inactive', sales_status = 'inactive',
-         version = version + 1, updated_at = NOW()
+         deleted_by = $4, version = version + 1, updated_at = NOW()
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3";
 
 const SELECT_CURRENCY_SQL: &str = "SELECT minor_unit_exponent, rounding_mode FROM commerce_currency
@@ -806,7 +1125,7 @@ const UPDATE_MEDIA_SQL: &str = concat!(
 );
 
 const SOFT_DELETE_MEDIA_SQL: &str = "UPDATE commerce_product_media
-     SET deleted_at = NOW(), status = 'inactive', version = version + 1, updated_at = NOW()
+     SET deleted_at = NOW(), status = 'inactive', deleted_by = $4, version = version + 1, updated_at = NOW()
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3";
 
 // ------------------------------------------------------- guarded-miss probes
@@ -824,8 +1143,17 @@ const SOFT_DELETE_MEDIA_SQL: &str = "UPDATE commerce_product_media
 const PROBE_CATEGORY_VERSION_SQL: &str = "SELECT version FROM commerce_product_category
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL";
 
-const PROBE_PRICE_LIST_VERSION_SQL: &str = "SELECT version FROM commerce_price_list
+const PROBE_ATTRIBUTE_VALUE_VERSION_SQL: &str =
+    "SELECT version FROM commerce_product_attribute_value
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL";
+
+const LOCK_PRICE_LIST_SQL: &str = concat!(
+    "SELECT ",
+    price_list_columns!(),
+    " FROM commerce_price_list
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+     FOR UPDATE"
+);
 
 const PROBE_CATEGORY_ATTRIBUTE_VERSION_SQL: &str =
     "SELECT version FROM commerce_product_category_attribute
@@ -833,6 +1161,14 @@ const PROBE_CATEGORY_ATTRIBUTE_VERSION_SQL: &str =
 
 const PROBE_SPU_VERSION_SQL: &str = "SELECT version FROM commerce_product_spu
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL";
+
+const LOCK_SPU_SQL: &str = concat!(
+    "SELECT ",
+    spu_columns!(),
+    " FROM commerce_product_spu
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+     FOR UPDATE"
+);
 
 const PROBE_SKU_VERSION_SQL: &str = "SELECT version FROM commerce_product_sku
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL";
@@ -1005,16 +1341,20 @@ impl PostgresCommerceCatalogStore {
             }
         };
 
+        let back_parent_id =
+            parse_optional_id("back_parent_id", command.back_parent_id.as_deref())?;
         let row = sqlx::query(INSERT_CATEGORY_SQL)
             .bind(id)
             .bind(tenant_id)
             .bind(organization_id)
             .bind(&command.category_no)
             .bind(parent_id)
+            .bind(back_parent_id)
             .bind(&path)
             .bind(depth)
             .bind(&command.name)
             .bind(command.sort_order)
+            .bind(&command.actor)
             .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to create category", error))?;
@@ -1101,13 +1441,26 @@ impl PostgresCommerceCatalogStore {
             }
         }
 
+        // `back_parent_id` is nullable and three-state, so the decided value is bound outright: an
+        // omitted key keeps the stored position, an explicit null removes it, a value replaces it.
+        let back_parent_id = match &command.back_parent_id {
+            Some(decided) => decided
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| parse_id("back_parent_id", value))
+                .transpose()?,
+            None => current.back_parent_id,
+        };
         let row = sqlx::query(UPDATE_CATEGORY_SQL)
+            .bind(back_parent_id)
             .bind(command.name.as_deref())
             .bind(command.sort_order)
             .bind(command.status.map(LifecycleStatus::as_storage_str))
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update category", error))?;
@@ -1184,6 +1537,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .execute(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to delete category", error))?
@@ -1239,6 +1593,19 @@ impl PostgresCommerceCatalogStore {
         Ok(rows.iter().map(map_attribute_row).collect())
     }
 
+    pub async fn retrieve_attribute(
+        &self,
+        query: &AttributeRetrieveQuery,
+    ) -> Result<Option<AttributeRecord>, CommerceServiceError> {
+        sqlx::query(RETRIEVE_ATTRIBUTE_SQL)
+            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(parse_id("attribute_id", &query.attribute_id)?)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to retrieve attribute", error))
+        .map(|row| row.map(|row| map_attribute_row(&row)))
+    }
+
     pub async fn count_attributes(
         &self,
         query: &AttributeListQuery,
@@ -1255,12 +1622,11 @@ impl PostgresCommerceCatalogStore {
             .map_err(|error| store_error("failed to count attributes", error))
     }
 
-    /// Creates an attribute dictionary entry plus its enumerated values.
+    /// Creates an attribute dictionary entry plus, for an `enum` attribute, its enumerated values.
     ///
-    /// `value_type` is fixed at `enum` and `input_hint` at `select` because the create command does
-    /// not carry them yet; both are valid baseline values, and the pairing satisfies
-    /// `ck_commerce_product_attribute_multi_value_needs_enum`. Exposing the remaining value types is
-    /// tracked in `TECH_ARCHITECTURE.md` section 9.
+    /// The type facts travel with the command now; the seed values are still written with the
+    /// display text doubling as the code, which is the convention the dictionary rows the seed
+    /// manifest carries already use.
     pub async fn create_attribute(
         &self,
         command: &CreateAttributeCommand,
@@ -1281,6 +1647,12 @@ impl PostgresCommerceCatalogStore {
             .bind(organization_id)
             .bind(&command.attribute_no)
             .bind(&command.name)
+            .bind(command.value_type.as_storage_str())
+            .bind(command.input_hint.as_storage_str())
+            .bind(command.is_multi_value)
+            .bind(command.unit_symbol.as_deref().map(str::trim))
+            .bind(command.sort_order)
+            .bind(&command.actor)
             .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to create attribute", error))?;
@@ -1307,6 +1679,542 @@ impl PostgresCommerceCatalogStore {
         Ok(map_attribute_row(&row))
     }
 
+    /// Updates an attribute's mutable surface (`name`, `unit_symbol`, `sort_order`, `status`).
+    ///
+    /// `unit_symbol` is nullable, so the update follows the SKU's lock-decide-write shape: lock the
+    /// row, decide each field against the stored values, write the decided values in one guarded
+    /// statement. That is also what makes the precondition honest — a stale version is refused
+    /// before anything is derived from the row.
+    pub async fn update_attribute(
+        &self,
+        command: &UpdateAttributeCommand,
+    ) -> Result<GuardedWrite<AttributeRecord>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let attribute_id = parse_id("attribute_id", &command.attribute_id)?;
+
+        let mut transaction =
+            self.pool.begin().await.map_err(|error| {
+                store_error("failed to open attribute update transaction", error)
+            })?;
+
+        let Some(current) = lock_live_row(
+            &mut transaction,
+            LOCK_ATTRIBUTE_SQL,
+            tenant_id,
+            attribute_id,
+        )
+        .await?
+        else {
+            return Err(CommerceServiceError::not_found("attribute was not found"));
+        };
+        let actual = bigint_cell(&current, "version");
+        if actual != command.expected_version {
+            return Ok(GuardedWrite::StaleVersion(StaleVersion {
+                expected: command.expected_version,
+                actual,
+            }));
+        }
+
+        let name = match command.name.as_deref() {
+            Some(name) => name.trim().to_owned(),
+            None => string_cell(&current, "name"),
+        };
+        let unit_symbol = match &command.unit_symbol {
+            Some(unit) => unit.as_deref().map(str::trim).map(str::to_owned),
+            None => optional_string_cell(&current, "unit_symbol"),
+        };
+        let sort_order = command
+            .sort_order
+            .unwrap_or_else(|| bigint_cell(&current, "sort_order"));
+        let status = command
+            .status
+            .map(|status| status.as_storage_str().to_owned())
+            .unwrap_or_else(|| string_cell(&current, "status"));
+
+        let row = sqlx::query(UPDATE_ATTRIBUTE_SQL)
+            .bind(&name)
+            .bind(unit_symbol)
+            .bind(sort_order)
+            .bind(&status)
+            .bind(tenant_id)
+            .bind(attribute_id)
+            .bind(command.expected_version)
+            .bind(&command.actor)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to update attribute", error))?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit attribute update", error))?;
+
+        Ok(GuardedWrite::Applied(map_attribute_row(&row)))
+    }
+
+    // ------------------------------------------------ attribute value dictionary
+
+    pub async fn list_attribute_values(
+        &self,
+        query: &AttributeValueListQuery,
+    ) -> Result<Vec<AttributeValueRecord>, CommerceServiceError> {
+        let limit = query.page_size.unwrap_or(20).min(200);
+        let offset = (query.page.unwrap_or(1) - 1).max(0) * limit;
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        let attribute_id = parse_id("attribute_id", &query.attribute_id)?;
+        let organization_id =
+            parse_optional_id("organization_id", query.organization_id.as_deref())?;
+
+        let rows = sqlx::query(LIST_ATTRIBUTE_VALUES_SQL)
+            .bind(tenant_id)
+            .bind(attribute_id)
+            .bind(organization_id)
+            .bind(query.status.as_deref())
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to list attribute values", error))?;
+
+        Ok(rows.iter().map(map_attribute_value_row).collect())
+    }
+
+    pub async fn count_attribute_values(
+        &self,
+        query: &AttributeValueListQuery,
+    ) -> Result<i64, CommerceServiceError> {
+        sqlx::query_scalar(COUNT_ATTRIBUTE_VALUES_SQL)
+            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(parse_id("attribute_id", &query.attribute_id)?)
+            .bind(parse_optional_id(
+                "organization_id",
+                query.organization_id.as_deref(),
+            )?)
+            .bind(query.status.as_deref())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to count attribute values", error))
+    }
+
+    /// Creates one dictionary value.
+    ///
+    /// The attribute row is re-read inside the transaction, which is where two rules live that the
+    /// command cannot see: the attribute must be an `enum` (a free-text attribute has no dictionary
+    /// to extend), and the row must belong to the submitting tenant. Both are `422`s naming the
+    /// rule rather than integrity errors, because both are category mistakes, not races.
+    pub async fn create_attribute_value(
+        &self,
+        command: &CreateAttributeValueCommand,
+    ) -> Result<AttributeValueRecord, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let organization_id = parse_id("organization_id", &command.organization_id)?;
+        let attribute_id = parse_id("attribute_id", &command.attribute_id)?;
+        let media_resource_id =
+            parse_optional_id("media_resource_id", command.media_resource_id.as_deref())?;
+        let id = self.next_id()?;
+
+        let mut transaction =
+            self.pool.begin().await.map_err(|error| {
+                store_error("failed to open attribute value transaction", error)
+            })?;
+
+        let attribute_type: Option<String> = sqlx::query_scalar(ATTRIBUTE_TYPE_SQL)
+            .bind(tenant_id)
+            .bind(attribute_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to read attribute", error))?;
+        match attribute_type.as_deref() {
+            Some("enum") => {}
+            Some(other) => {
+                return Err(CommerceServiceError::validation(format!(
+                    "attribute `{attribute_id}` is a `{other}` attribute: only an `enum` attribute \
+                     has a dictionary to extend"
+                )));
+            }
+            None => {
+                return Err(CommerceServiceError::not_found("attribute was not found"));
+            }
+        }
+
+        let row = sqlx::query(INSERT_DICTIONARY_VALUE_SQL)
+            .bind(id)
+            .bind(tenant_id)
+            .bind(organization_id)
+            .bind(attribute_id)
+            .bind(command.value_code.trim())
+            .bind(command.display_value.trim())
+            .bind(command.color_hex.as_deref().map(str::trim))
+            .bind(media_resource_id)
+            .bind(command.sort_order)
+            .bind(&command.actor)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to create attribute value", error))?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit attribute value creation", error))?;
+
+        Ok(map_attribute_value_row(&row))
+    }
+
+    /// Updates one dictionary value's presentation surface.
+    ///
+    /// `color_hex` and `media_resource_id` are nullable, so the update follows the same
+    /// lock-decide-write shape as the attribute and the SKU: lock the row, decide each field
+    /// against the stored values, write the decided values in one guarded statement. The identity
+    /// pair `(attribute_id, value_code)` is not mutable — moving a value between attributes or
+    /// renaming its key is a delete plus a create, not an edit.
+    pub async fn update_attribute_value(
+        &self,
+        command: &UpdateAttributeValueCommand,
+    ) -> Result<GuardedWrite<AttributeValueRecord>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let attribute_value_id = parse_id("attribute_value_id", &command.attribute_value_id)?;
+
+        let mut transaction =
+            self.pool.begin().await.map_err(|error| {
+                store_error("failed to open attribute value transaction", error)
+            })?;
+
+        let Some(current) = lock_live_row(
+            &mut transaction,
+            LOCK_ATTRIBUTE_VALUE_SQL,
+            tenant_id,
+            attribute_value_id,
+        )
+        .await?
+        else {
+            return Err(CommerceServiceError::not_found(
+                "attribute value was not found",
+            ));
+        };
+        let actual = bigint_cell(&current, "version");
+        if actual != command.expected_version {
+            return Ok(GuardedWrite::StaleVersion(StaleVersion {
+                expected: command.expected_version,
+                actual,
+            }));
+        }
+
+        let display_value = match command.display_value.as_deref() {
+            Some(value) => value.trim().to_owned(),
+            None => string_cell(&current, "display_value"),
+        };
+        let color_hex = match &command.color_hex {
+            Some(color) => color.as_deref().map(str::trim).map(str::to_owned),
+            None => optional_string_cell(&current, "color_hex"),
+        };
+        let media_resource_id = match &command.media_resource_id {
+            Some(Some(raw)) => Some(parse_id("media_resource_id", raw)?),
+            Some(None) => None,
+            None => optional_bigint_cell(&current, "media_resource_id"),
+        };
+        let sort_order = command
+            .sort_order
+            .unwrap_or_else(|| bigint_cell(&current, "sort_order"));
+        let status = command
+            .status
+            .map(|status| status.as_storage_str().to_owned())
+            .unwrap_or_else(|| string_cell(&current, "status"));
+
+        let row = sqlx::query(UPDATE_ATTRIBUTE_VALUE_SQL)
+            .bind(&display_value)
+            .bind(color_hex)
+            .bind(media_resource_id)
+            .bind(sort_order)
+            .bind(&status)
+            .bind(tenant_id)
+            .bind(attribute_value_id)
+            .bind(command.expected_version)
+            .bind(&command.actor)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to update attribute value", error))?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit attribute value update", error))?;
+
+        Ok(GuardedWrite::Applied(map_attribute_value_row(&row)))
+    }
+
+    /// Retires one dictionary value.
+    ///
+    /// A value a live SKU variant still sits on is refused, because a variant whose axis value is
+    /// gone is a variant the buyer can no longer select and the console can no longer render. The
+    /// refusal is a `409` rather than a `422`: the request is well-formed, the row is simply in use.
+    pub async fn delete_attribute_value(
+        &self,
+        command: &DeleteAttributeValueCommand,
+    ) -> Result<GuardedWrite<()>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let attribute_value_id = parse_id("attribute_value_id", &command.attribute_value_id)?;
+
+        let mut transaction =
+            self.pool.begin().await.map_err(|error| {
+                store_error("failed to open attribute value transaction", error)
+            })?;
+
+        let in_use: bool = sqlx::query_scalar(VALUE_ON_LIVE_SKU_AXIS_SQL)
+            .bind(tenant_id)
+            .bind(attribute_value_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to check attribute value usage", error))?;
+        if in_use {
+            return Err(CommerceServiceError::conflict(
+                "attribute value is still carried by a live sku variant and cannot be deleted",
+            ));
+        }
+
+        let affected = sqlx::query(SOFT_DELETE_ATTRIBUTE_VALUE_SQL)
+            .bind(tenant_id)
+            .bind(attribute_value_id)
+            .bind(command.expected_version)
+            .bind(&command.actor)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to delete attribute value", error))?;
+
+        if affected.rows_affected() == 0 {
+            // The usage check above found no live SKU axis, so a zero-row delete is either a row
+            // that is not there or one whose version moved. Asking the same question the pool-wide
+            // miss classifier asks, inside this transaction, separates the two.
+            return classify_guarded_miss(
+                &mut *transaction,
+                PROBE_ATTRIBUTE_VALUE_VERSION_SQL,
+                tenant_id,
+                attribute_value_id,
+                command.expected_version,
+                "attribute value",
+            )
+            .await
+            .map(GuardedWrite::StaleVersion);
+        }
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit attribute value deletion", error))?;
+        Ok(GuardedWrite::Applied(()))
+    }
+
+    // ------------------------------------------------ product attribute set
+
+    pub async fn list_spu_attributes(
+        &self,
+        query: &ProductAttributesRetrieveQuery,
+    ) -> Result<Vec<SpuAttributeRecord>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        let spu_id = parse_id("spu_id", &query.spu_id)?;
+
+        let rows = sqlx::query(LIST_SPU_ATTRIBUTES_SQL)
+            .bind(tenant_id)
+            .bind(spu_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to list product attributes", error))?;
+
+        Ok(rows.iter().map(map_spu_attribute_row).collect())
+    }
+
+    /// Replaces a product's whole key/parameter attribute set.
+    ///
+    /// The write is guarded on the **SPU's** version — the set is part of the product aggregate, so
+    /// the product row's version is what advances and what the next `If-Match` names. Every entry is
+    /// resolved against three things the command cannot see: the attribute's own row (existence and
+    /// `value_type`), the category template (the attribute must be bound, active, in the matching
+    /// role), and — for a dictionary carrier — the value row (present, live, and on that attribute).
+    pub async fn replace_spu_attributes(
+        &self,
+        command: &ReplaceProductAttributesCommand,
+    ) -> Result<GuardedWrite<ProductAttributesWrite>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let spu_id = parse_id("spu_id", &command.spu_id)?;
+
+        let mut transaction =
+            self.pool.begin().await.map_err(|error| {
+                store_error("failed to open product attribute transaction", error)
+            })?;
+
+        // Lock the SPU row first: the guarded version bump below is the write's precondition, and
+        // taking the row lock up front serialises two concurrent replacements before either reads
+        // the template.
+        let spu = sqlx::query(SPU_EXISTS_SQL)
+            .bind(tenant_id)
+            .bind(spu_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to read product", error))?;
+        let Some(spu) = spu else {
+            return Err(CommerceServiceError::not_found("product was not found"));
+        };
+        let category_id = bigint_cell(&spu, "category_id");
+        let spu_organization = bigint_cell(&spu, "organization_id");
+        // The row is locked, so the precondition can be answered here before any template read:
+        // answering it after the replacement statements would mean building a set the caller's copy
+        // does not describe.
+        let spu_version = bigint_cell(&spu, "version");
+        if spu_version != command.expected_version {
+            return Ok(GuardedWrite::StaleVersion(StaleVersion {
+                expected: command.expected_version,
+                actual: spu_version,
+            }));
+        }
+
+        // Resolve every entry before writing anything, so a bad entry fails the whole replacement.
+        let mut resolved: Vec<ResolvedSpuAttribute> = Vec::new();
+        for entry in &command.attributes {
+            let attribute_id = parse_id("attribute_id", &entry.attribute_id)?;
+
+            let role: Option<String> = sqlx::query_scalar(CATEGORY_BINDING_ROLE_SQL)
+                .bind(tenant_id)
+                .bind(category_id)
+                .bind(attribute_id)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(|error| store_error("failed to read category template", error))?;
+            let Some(role) = role else {
+                return Err(CommerceServiceError::validation(format!(
+                    "attribute `{attribute_id}` is not bound to the product's category: the \
+                     category template decides what a product of this category carries"
+                )));
+            };
+            if role != entry.role.as_storage_str() {
+                return Err(CommerceServiceError::validation(format!(
+                    "attribute `{attribute_id}` is bound as `{role}` in the category template, not \
+                     as `{}`",
+                    entry.role.as_storage_str()
+                )));
+            }
+
+            let value_type: Option<String> = sqlx::query_scalar(ATTRIBUTE_TYPE_SQL)
+                .bind(tenant_id)
+                .bind(attribute_id)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(|error| store_error("failed to read attribute", error))?;
+            let Some(value_type) = value_type else {
+                return Err(CommerceServiceError::not_found("attribute was not found"));
+            };
+
+            let (value_id, raw_value) = match (&entry.attribute_value_id, &entry.raw_value) {
+                (Some(raw), None) => {
+                    if value_type != "enum" {
+                        return Err(CommerceServiceError::validation(format!(
+                            "attribute `{attribute_id}` is a `{value_type}` attribute: only an \
+                             `enum` attribute takes a dictionary value"
+                        )));
+                    }
+                    let value_id = parse_id("attribute_value_id", raw)?;
+                    let exists: Option<i64> = sqlx::query_scalar(DICTIONARY_VALUE_ON_ATTRIBUTE_SQL)
+                        .bind(tenant_id)
+                        .bind(value_id)
+                        .bind(attribute_id)
+                        .fetch_optional(&mut *transaction)
+                        .await
+                        .map_err(|error| store_error("failed to resolve attribute value", error))?;
+                    if exists.is_none() {
+                        return Err(CommerceServiceError::validation(format!(
+                            "attribute_value `{value_id}` does not belong to attribute \
+                             `{attribute_id}`"
+                        )));
+                    }
+                    (Some(value_id), None)
+                }
+                (None, Some(raw)) => {
+                    if value_type == "enum" {
+                        return Err(CommerceServiceError::validation(format!(
+                            "attribute `{attribute_id}` is an `enum` attribute: its values come \
+                             from the dictionary, so submit attribute_value_id"
+                        )));
+                    }
+                    (None, Some(raw.trim().to_owned()))
+                }
+                (Some(_), Some(_)) | (None, None) => {
+                    return Err(CommerceServiceError::validation(
+                        "each attribute entry must carry exactly one of attribute_value_id or \
+                         raw_value",
+                    ));
+                }
+            };
+
+            resolved.push(ResolvedSpuAttribute {
+                attribute_id,
+                value_id,
+                raw_value,
+                role: entry.role.as_storage_str().to_owned(),
+                sort_order: entry.sort_order,
+            });
+        }
+
+        // Retire the current set, then write the replacement. The retirement is a soft delete so
+        // `uk_commerce_product_spu_attribute_value` — a partial index on `deleted_at IS NULL` —
+        // stays honest about what the product used to declare.
+        sqlx::query(SOFT_DELETE_SPU_ATTRIBUTES_SQL)
+            .bind(tenant_id)
+            .bind(spu_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to retire product attributes", error))?;
+
+        for entry in &resolved {
+            sqlx::query(INSERT_SPU_ATTRIBUTE_SQL)
+                .bind(next_snowflake(&self.ids)?)
+                .bind(tenant_id)
+                .bind(spu_organization)
+                .bind(spu_id)
+                .bind(entry.attribute_id)
+                .bind(entry.value_id)
+                .bind(entry.raw_value.as_deref())
+                .bind(&entry.role)
+                .bind(entry.sort_order)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| store_error("failed to write product attribute", error))?;
+        }
+
+        // Advance the product row's version under the caller's precondition. The row is locked and
+        // the precondition was answered at the top, so this always applies — the guard remains in
+        // the statement because the version advance is a write that must carry its own predicate,
+        // not because a miss is still possible here.
+        let new_version = spu_version + 1;
+        let guarded = sqlx::query(GUARD_SPU_VERSION_SQL)
+            .bind(tenant_id)
+            .bind(spu_id)
+            .bind(command.expected_version)
+            .bind(&command.actor)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to update product", error))?;
+        if guarded.is_none() {
+            return Err(CommerceServiceError::storage(
+                "product version moved during its own guarded replacement",
+            ));
+        }
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit product attributes", error))?;
+
+        let attributes = self
+            .list_spu_attributes(&ProductAttributesRetrieveQuery {
+                tenant_id: command.tenant_id.clone(),
+                spu_id: command.spu_id.clone(),
+            })
+            .await?;
+
+        Ok(GuardedWrite::Applied(ProductAttributesWrite {
+            attributes,
+            version: new_version,
+        }))
+    }
+
     // ---------------------------------------------------------------- price lists
 
     pub async fn list_price_lists(
@@ -1331,7 +2239,9 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to list price lists", error))?;
 
-        Ok(rows.iter().map(map_price_list_row).collect())
+        let mut lists: Vec<PriceListRecord> = rows.iter().map(map_price_list_row).collect();
+        fill_price_list_symbols(&self.pool, &mut lists).await?;
+        Ok(lists)
     }
 
     pub async fn count_price_lists(
@@ -1354,8 +2264,9 @@ impl PostgresCommerceCatalogStore {
 
     /// Creates a price list.
     ///
-    /// `name` is required by the baseline but absent from the create command, so it is derived from
-    /// the business key. Making it an explicit input is tracked in `TECH_ARCHITECTURE.md` section 9.
+    /// `name` is a required input now: the derived-from-business-key spelling could not say
+    /// `Wholesale EU` where the business key says `pl-whs-eu`, and the list editor renders the
+    /// name.
     pub async fn create_price_list(
         &self,
         command: &CreatePriceListCommand,
@@ -1370,13 +2281,38 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(organization_id)
             .bind(&command.price_list_no)
+            .bind(command.name.trim())
             .bind(&command.currency_code)
             .bind(command.market_code.as_deref())
+            .bind(command.customer_segment.as_deref().map(str::trim))
+            .bind(&command.actor)
             .fetch_one(&self.pool)
             .await
             .map_err(|error| store_error("failed to create price list", error))?;
 
-        Ok(map_price_list_row(&row))
+        let mut list = map_price_list_row(&row);
+        fill_price_list_symbols(&self.pool, std::slice::from_mut(&mut list)).await?;
+        Ok(list)
+    }
+
+    pub async fn retrieve_price_list(
+        &self,
+        query: &PriceListRetrieveQuery,
+    ) -> Result<Option<PriceListRecord>, CommerceServiceError> {
+        let row = sqlx::query(RETRIEVE_PRICE_LIST_SQL)
+            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(parse_id("price_list_id", &query.price_list_id)?)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to retrieve price list", error))?;
+        match row {
+            Some(row) => {
+                let mut lists = vec![map_price_list_row(&row)];
+                fill_price_list_symbols(&self.pool, &mut lists).await?;
+                Ok(lists.pop())
+            }
+            None => Ok(None),
+        }
     }
 
     pub async fn update_price_list(
@@ -1385,6 +2321,36 @@ impl PostgresCommerceCatalogStore {
     ) -> Result<GuardedWrite<PriceListRecord>, CommerceServiceError> {
         let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
         let id = parse_id("price_list_id", &command.price_list_id)?;
+
+        // `name` is NOT NULL and `customer_segment` is nullable, so both follow the
+        // lock-decide-write shape: read the stored values under the row lock, decide each field,
+        // and bind the decisions. A stated removal reaches the column as NULL while an omitted
+        // key keeps it.
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| store_error("failed to open price list transaction", error))?;
+        let Some(current) =
+            lock_live_row(&mut transaction, LOCK_PRICE_LIST_SQL, tenant_id, id).await?
+        else {
+            return Err(CommerceServiceError::not_found("price list was not found"));
+        };
+        let actual = bigint_cell(&current, "version");
+        if actual != command.expected_version {
+            return Ok(GuardedWrite::StaleVersion(StaleVersion {
+                expected: command.expected_version,
+                actual,
+            }));
+        }
+        let name = match command.name.as_deref() {
+            Some(name) => name.trim().to_owned(),
+            None => string_cell(&current, "name"),
+        };
+        let customer_segment = match &command.customer_segment {
+            Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
+            None => optional_string_cell(&current, "customer_segment"),
+        };
 
         if let (Some(starts_at), Some(ends_at)) = (&command.starts_at, &command.ends_at) {
             let starts = parse_timestamp("starts_at", starts_at)?;
@@ -1397,29 +2363,264 @@ impl PostgresCommerceCatalogStore {
         }
 
         let row = sqlx::query(UPDATE_PRICE_LIST_SQL)
+            .bind(&name)
+            .bind(customer_segment)
             .bind(command.status.map(LifecycleStatus::as_storage_str))
             .bind(command.starts_at.as_deref())
             .bind(command.ends_at.as_deref())
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
-            .fetch_optional(&self.pool)
+            .bind(&command.actor)
+            .fetch_optional(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update price list", error))?;
 
-        let Some(row) = row else {
+        // The row is locked and the precondition was answered at the top, so the guarded UPDATE
+        // cannot miss; the guard stays in the statement because the version advance is a write
+        // that must carry its own predicate.
+        let row = match row {
+            Some(row) => row,
+            None => {
+                return Err(CommerceServiceError::storage(
+                    "price list version moved during its own guarded update",
+                ));
+            }
+        };
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit price list update", error))?;
+
+        let mut list = map_price_list_row(&row);
+        fill_price_list_symbols(&self.pool, std::slice::from_mut(&mut list)).await?;
+        Ok(GuardedWrite::Applied(list))
+    }
+
+    // ------------------------------------------------ price list items
+
+    pub async fn list_price_list_items(
+        &self,
+        query: &PriceListItemListQuery,
+    ) -> Result<Vec<PriceListItemRecord>, CommerceServiceError> {
+        let limit = query.page_size.unwrap_or(20).min(200);
+        let offset = (query.page.unwrap_or(1) - 1).max(0) * limit;
+
+        let rows = sqlx::query(LIST_PRICE_LIST_ITEMS_SQL)
+            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(parse_id("price_list_id", &query.price_list_id)?)
+            .bind(parse_optional_id(
+                "organization_id",
+                query.organization_id.as_deref(),
+            )?)
+            .bind(parse_optional_id("sku_id", query.sku_id.as_deref())?)
+            .bind(query.status.as_deref())
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to list price list items", error))?;
+
+        Ok(rows.iter().map(map_price_list_item_row).collect())
+    }
+
+    pub async fn count_price_list_items(
+        &self,
+        query: &PriceListItemListQuery,
+    ) -> Result<i64, CommerceServiceError> {
+        sqlx::query_scalar(COUNT_PRICE_LIST_ITEMS_SQL)
+            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(parse_id("price_list_id", &query.price_list_id)?)
+            .bind(parse_optional_id(
+                "organization_id",
+                query.organization_id.as_deref(),
+            )?)
+            .bind(parse_optional_id("sku_id", query.sku_id.as_deref())?)
+            .bind(query.status.as_deref())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to count price list items", error))
+    }
+
+    /// Creates one priced row of a price list.
+    ///
+    /// The list row is locked and read inside the transaction because it is the currency
+    /// authority: the item inherits `currency_code` and `price_scale` from it, which is what makes
+    /// `fk_commerce_price_list_item_list_currency` — the composite foreign key that refuses an
+    /// item quoting different money than its list — impossible to violate. The SKU is checked for
+    /// existence the same way the media owner is: a missing reference is a `422` through the
+    /// `23503` mapping, and the check here only makes the failure name the row it was about.
+    pub async fn create_price_list_item(
+        &self,
+        command: &CreatePriceListItemCommand,
+    ) -> Result<PriceListItemRecord, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let organization_id = parse_id("organization_id", &command.organization_id)?;
+        let price_list_id = parse_id("price_list_id", &command.price_list_id)?;
+        let sku_id = parse_id("sku_id", &command.sku_id)?;
+        let id = self.next_id()?;
+
+        let mut transaction =
+            self.pool.begin().await.map_err(|error| {
+                store_error("failed to open price list item transaction", error)
+            })?;
+
+        let list = sqlx::query(PRICE_LIST_CURRENCY_SQL)
+            .bind(tenant_id)
+            .bind(price_list_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to read price list", error))?;
+        let Some(list) = list else {
+            return Err(CommerceServiceError::not_found("price list was not found"));
+        };
+        let currency_code: String = list
+            .try_get("currency_code")
+            .map_err(|error| store_error("failed to read price list currency", error))?;
+        let price_scale: i16 = list
+            .try_get("price_scale")
+            .map_err(|error| store_error("failed to read price list scale", error))?;
+
+        let sku_exists: bool = sqlx::query_scalar(SKU_EXISTS_SQL)
+            .bind(tenant_id)
+            .bind(sku_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to check sku existence", error))?;
+        if !sku_exists {
+            return Err(CommerceServiceError::validation(
+                "sku_id does not name a live sku of this tenant",
+            ));
+        }
+
+        let row = sqlx::query(INSERT_PRICE_LIST_ITEM_SQL)
+            .bind(id)
+            .bind(tenant_id)
+            .bind(organization_id)
+            .bind(price_list_id)
+            .bind(sku_id)
+            .bind(&currency_code)
+            .bind(i64::from(price_scale))
+            .bind(command.price_minor)
+            .bind(command.min_quantity)
+            .bind(&command.actor)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to create price list item", error))?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit price list item creation", error))?;
+
+        Ok(map_price_list_item_row(&row))
+    }
+
+    /// Updates one priced row.
+    ///
+    /// Every column is decided against the locked row — `price_minor` and `min_quantity` are NOT
+    /// NULL, so a COALESCE would read "not mentioned" and "zero" as the same answer — and the tier
+    /// uniqueness (`uk_commerce_price_list_item_tier`) stays the last line of defence: restating
+    /// `min_quantity` onto a step another row prices is a `409` naming the business key.
+    pub async fn update_price_list_item(
+        &self,
+        command: &UpdatePriceListItemCommand,
+    ) -> Result<GuardedWrite<PriceListItemRecord>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let item_id = parse_id("price_list_item_id", &command.price_list_item_id)?;
+
+        let mut transaction =
+            self.pool.begin().await.map_err(|error| {
+                store_error("failed to open price list item transaction", error)
+            })?;
+
+        let Some(current) = lock_live_row(
+            &mut transaction,
+            LOCK_PRICE_LIST_ITEM_SQL,
+            tenant_id,
+            item_id,
+        )
+        .await?
+        else {
+            return Err(CommerceServiceError::not_found(
+                "price list item was not found",
+            ));
+        };
+        let actual = bigint_cell(&current, "version");
+        if actual != command.expected_version {
+            return Ok(GuardedWrite::StaleVersion(StaleVersion {
+                expected: command.expected_version,
+                actual,
+            }));
+        }
+
+        let price_minor = command
+            .price_minor
+            .unwrap_or_else(|| bigint_cell(&current, "price_minor"));
+        let min_quantity = command
+            .min_quantity
+            .unwrap_or_else(|| bigint_cell(&current, "min_quantity"));
+        let status = command
+            .status
+            .map(|status| status.as_storage_str().to_owned())
+            .unwrap_or_else(|| string_cell(&current, "status"));
+
+        let row = sqlx::query(UPDATE_PRICE_LIST_ITEM_SQL)
+            .bind(price_minor)
+            .bind(min_quantity)
+            .bind(&status)
+            .bind(tenant_id)
+            .bind(item_id)
+            .bind(command.expected_version)
+            .bind(&command.actor)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to update price list item", error))?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit price list item update", error))?;
+
+        Ok(GuardedWrite::Applied(map_price_list_item_row(&row)))
+    }
+
+    /// Retires one priced row.
+    ///
+    /// A list deactivation gates resolution at read time, so a row is deleted only when the
+    /// ladder step itself goes away; the delete is a soft delete and the row keeps its history.
+    pub async fn delete_price_list_item(
+        &self,
+        command: &DeletePriceListItemCommand,
+    ) -> Result<GuardedWrite<()>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let item_id = parse_id("price_list_item_id", &command.price_list_item_id)?;
+
+        let affected = sqlx::query(SOFT_DELETE_PRICE_LIST_ITEM_SQL)
+            .bind(tenant_id)
+            .bind(item_id)
+            .bind(command.expected_version)
+            .bind(&command.actor)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to delete price list item", error))?
+            .rows_affected();
+
+        if affected == 0 {
             return classify_guarded_miss(
                 &self.pool,
-                PROBE_PRICE_LIST_VERSION_SQL,
+                PROBE_PRICE_LIST_ITEM_VERSION_SQL,
                 tenant_id,
-                id,
+                item_id,
                 command.expected_version,
-                "price list",
+                "price list item",
             )
             .await
             .map(GuardedWrite::StaleVersion);
-        };
-        Ok(GuardedWrite::Applied(map_price_list_row(&row)))
+        }
+
+        Ok(GuardedWrite::Applied(()))
     }
 
     // ------------------------------------------------ category attribute bindings
@@ -1511,6 +2712,7 @@ impl PostgresCommerceCatalogStore {
             .bind(command.filterable)
             .bind(command.comparable)
             .bind(command.sort_order)
+            .bind(&command.actor)
             .fetch_one(&self.pool)
             .await
             .map_err(|error| store_error("failed to create category attribute", error))?;
@@ -1536,6 +2738,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .fetch_optional(&self.pool)
             .await
             .map_err(|error| store_error("failed to update category attribute", error))?;
@@ -1566,6 +2769,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .execute(&self.pool)
             .await
             .map_err(|error| store_error("failed to delete category attribute", error))?
@@ -1615,7 +2819,10 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to list spus", error))?;
 
-        Ok(rows.iter().map(map_spu_row).collect())
+        let mut spus: Vec<SpuRecord> = rows.iter().map(map_spu_row).collect();
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        attach_spu_attributes(&self.pool, tenant_id, &mut spus).await?;
+        Ok(spus)
     }
 
     pub async fn count_spus(
@@ -1644,14 +2851,22 @@ impl PostgresCommerceCatalogStore {
         &self,
         query: &ProductSpuRetrieveQuery,
     ) -> Result<Option<SpuRecord>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
         let row = sqlx::query(RETRIEVE_SPU_SQL)
-            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(tenant_id)
             .bind(parse_id("spu_id", &query.spu_id)?)
             .fetch_optional(&self.pool)
             .await
             .map_err(|error| store_error("failed to retrieve spu", error))?;
 
-        Ok(row.as_ref().map(map_spu_row))
+        match row {
+            Some(row) => {
+                let mut spus = vec![map_spu_row(&row)];
+                attach_spu_attributes(&self.pool, tenant_id, &mut spus).await?;
+                Ok(spus.pop())
+            }
+            None => Ok(None),
+        }
     }
 
     /// Creates a SPU in `draft`.
@@ -1678,6 +2893,12 @@ impl PostgresCommerceCatalogStore {
             .bind(command.subtitle.as_deref())
             .bind(command.description.as_deref())
             .bind(command.product_type.as_storage_str())
+            .bind(command.model_no.as_deref().map(str::trim))
+            .bind(command.barcode.as_deref().map(str::trim))
+            .bind(command.weight_gram)
+            .bind(command.volume_ml)
+            .bind(command.tax_class_code.as_deref().map(str::trim))
+            .bind(&command.actor)
             .fetch_one(&self.pool)
             .await
             .map_err(|error| store_error("failed to create spu", error))?;
@@ -1701,6 +2922,48 @@ impl PostgresCommerceCatalogStore {
             .as_ref()
             .and_then(|value| value.as_deref());
 
+        // The five fixed-semantics columns are nullable and three-state, so they follow the
+        // lock-decide-write shape: read the stored values under the row lock, decide each field, and
+        // bind the decisions. `COALESCE` cannot express a stated removal on a nullable column, and
+        // five separate clear statements would move the version five times.
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| store_error("failed to open spu transaction", error))?;
+        let Some(current) = lock_live_row(&mut transaction, LOCK_SPU_SQL, tenant_id, id).await?
+        else {
+            return Err(CommerceServiceError::not_found("product was not found"));
+        };
+        let actual = bigint_cell(&current, "version");
+        if actual != command.expected_version {
+            return Ok(GuardedWrite::StaleVersion(StaleVersion {
+                expected: command.expected_version,
+                actual,
+            }));
+        }
+
+        let model_no = match &command.model_no {
+            Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
+            None => optional_string_cell(&current, "model_no"),
+        };
+        let barcode = match &command.barcode {
+            Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
+            None => optional_string_cell(&current, "barcode"),
+        };
+        let weight_gram = match command.weight_gram {
+            Some(decided) => decided,
+            None => optional_bigint_cell(&current, "weight_gram"),
+        };
+        let volume_ml = match command.volume_ml {
+            Some(decided) => decided,
+            None => optional_bigint_cell(&current, "volume_ml"),
+        };
+        let tax_class_code = match &command.tax_class_code {
+            Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
+            None => optional_string_cell(&current, "tax_class_code"),
+        };
+
         let row = sqlx::query(UPDATE_SPU_SQL)
             .bind(command.title.as_deref())
             .bind(command.subtitle.as_deref())
@@ -1710,27 +2973,48 @@ impl PostgresCommerceCatalogStore {
                 "category_id",
                 command.category_id.as_deref(),
             )?)
+            .bind(model_no)
+            .bind(barcode)
+            .bind(weight_gram)
+            .bind(volume_ml)
+            .bind(tax_class_code)
             .bind(command.status.map(ProductStatus::as_storage_str))
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
-            .fetch_optional(&self.pool)
+            .bind(&command.actor)
+            .fetch_optional(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update spu", error))?;
 
-        let Some(row) = row else {
-            return classify_guarded_miss(
-                &self.pool,
-                PROBE_SPU_VERSION_SQL,
-                tenant_id,
-                id,
-                command.expected_version,
-                "product",
-            )
-            .await
-            .map(GuardedWrite::StaleVersion);
+        // The row is locked and the precondition was answered at the top, so the guarded UPDATE
+        // cannot miss; the guard stays in the statement because the version advance is a write
+        // that must carry its own predicate.
+        let row = match row {
+            Some(row) => row,
+            None => {
+                return Err(CommerceServiceError::storage(
+                    "product version moved during its own guarded update",
+                ));
+            }
         };
-        Ok(GuardedWrite::Applied(map_spu_row(&row)))
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit spu update", error))?;
+
+        let mut spus = vec![map_spu_row(&row)];
+        attach_spu_attributes(&self.pool, tenant_id, &mut spus).await?;
+        match spus.pop() {
+            Some(spu) => Ok(GuardedWrite::Applied(spu)),
+            // `attach_spu_attributes` only fills the rows it was handed, so the single-element
+            // vector always still holds its row; an empty answer means the read model failed, not
+            // that the product vanished between the two statements.
+            None => Err(CommerceServiceError::storage(
+                "the attached product read model came back empty",
+            )),
+        }
     }
 
     /// Retires a SPU and every SKU under it.
@@ -1754,6 +3038,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .execute(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to delete spu", error))?
@@ -1822,6 +3107,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to publish spu", error))?;
@@ -1844,7 +3130,14 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to commit spu publication", error))?;
 
-        Ok(GuardedWrite::Applied(map_spu_row(&row)))
+        let mut spus = vec![map_spu_row(&row)];
+        attach_spu_attributes(&self.pool, tenant_id, &mut spus).await?;
+        match spus.pop() {
+            Some(spu) => Ok(GuardedWrite::Applied(spu)),
+            None => Err(CommerceServiceError::storage(
+                "the attached product read model came back empty",
+            )),
+        }
     }
 
     /// Archives a SPU and pulls it from every sellable index.
@@ -1859,6 +3152,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .fetch_optional(&self.pool)
             .await
             .map_err(|error| store_error("failed to archive spu", error))?;
@@ -1875,7 +3169,14 @@ impl PostgresCommerceCatalogStore {
             .await
             .map(GuardedWrite::StaleVersion);
         };
-        Ok(GuardedWrite::Applied(map_spu_row(&row)))
+        let mut spus = vec![map_spu_row(&row)];
+        attach_spu_attributes(&self.pool, tenant_id, &mut spus).await?;
+        match spus.pop() {
+            Some(spu) => Ok(GuardedWrite::Applied(spu)),
+            None => Err(CommerceServiceError::storage(
+                "the attached product read model came back empty",
+            )),
+        }
     }
 
     // ---------------------------------------------------------------- SKUs
@@ -1917,6 +3218,7 @@ impl PostgresCommerceCatalogStore {
             .collect::<Result<Vec<_>, _>>()?;
         let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
         attach_sku_axes(&self.pool, tenant_id, &mut skus).await?;
+        fill_currency_symbols(&self.pool, &mut skus).await?;
         Ok(skus)
     }
 
@@ -1960,6 +3262,7 @@ impl PostgresCommerceCatalogStore {
         // listed SKU cannot disagree about which positions they occupy.
         let mut skus = vec![map_sku_row(row)?];
         attach_sku_axes(&self.pool, tenant_id, &mut skus).await?;
+        fill_currency_symbols(&self.pool, &mut skus).await?;
         let sku = skus.swap_remove(0);
         Ok(Some(sku))
     }
@@ -2020,9 +3323,14 @@ impl PostgresCommerceCatalogStore {
             .bind(currency.scale())
             .bind(list_price_minor)
             .bind(sale_price_minor)
+            .bind(command.cost_price_minor)
+            .bind(command.barcode.as_deref().map(str::trim))
+            .bind(command.weight_gram)
             .bind(command.fulfillment_type.as_storage_str())
             .bind(command.inventory_tracking.as_storage_str())
+            .bind(command.inventory_policy.as_storage_str())
             .bind(&command.metadata)
+            .bind(&command.actor)
             .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to create sku", error))?;
@@ -2043,6 +3351,7 @@ impl PostgresCommerceCatalogStore {
             .map_err(|error| store_error("failed to commit sku creation", error))?;
 
         let mut sku = map_sku_row(&row)?;
+        fill_currency_symbols(&self.pool, std::slice::from_mut(&mut sku)).await?;
         sku.attribute_values = axes;
         Ok(sku)
     }
@@ -2088,6 +3397,21 @@ impl PostgresCommerceCatalogStore {
         let current_list: Option<i64> = current
             .try_get("list_price_minor")
             .map_err(|error| store_error("failed to read sku list price", error))?;
+        let current_cost: Option<i64> = current
+            .try_get("cost_price_minor")
+            .map_err(|error| store_error("failed to read sku cost price", error))?;
+        let current_barcode: Option<String> = current
+            .try_get("barcode")
+            .map_err(|error| store_error("failed to read sku barcode", error))?;
+        let current_weight: Option<i64> = current
+            .try_get("weight_gram")
+            .map_err(|error| store_error("failed to read sku weight", error))?;
+        let current_tracking: String = current
+            .try_get("inventory_tracking")
+            .map_err(|error| store_error("failed to read sku tracking", error))?;
+        let current_policy: String = current
+            .try_get("inventory_policy")
+            .map_err(|error| store_error("failed to read sku policy", error))?;
         let spu_id: i64 = current
             .try_get("spu_id")
             .map_err(|error| store_error("failed to read sku product", error))?;
@@ -2130,6 +3454,36 @@ impl PostgresCommerceCatalogStore {
             None => current_list,
         };
         ensure_sale_not_above_list(sale_price_minor, list_price_minor)?;
+
+        let cost_price_minor = match command.cost_price_minor {
+            Some(decided) => decided,
+            None => current_cost,
+        };
+        let barcode = match &command.barcode {
+            Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
+            None => current_barcode,
+        };
+        let weight_gram = match command.weight_gram {
+            Some(decided) => decided,
+            None => current_weight,
+        };
+        // The pairing the baseline CHECK enforces is checked against the *effective* values: a
+        // command that states only the policy cannot see the stored tracking mode, and a command
+        // that states only the tracking mode cannot see the stored policy.
+        let effective_tracking = command
+            .inventory_tracking
+            .map(|value| value.as_storage_str().to_owned())
+            .unwrap_or(current_tracking);
+        let effective_policy = command
+            .inventory_policy
+            .map(|value| value.as_storage_str().to_owned())
+            .unwrap_or(current_policy);
+        if effective_policy == "backorder" && effective_tracking != "quantity" {
+            return Err(CommerceServiceError::validation(
+                "inventory_policy `backorder` requires inventory_tracking `quantity`: an untracked \
+                 SKU has no stock to run out of",
+            ));
+        }
 
         // `None` keeps the stored axes, `Some(vec![])` clears them, anything else replaces them.
         let mut replaced_axes: Option<Vec<SkuAxisRecord>> = None;
@@ -2174,6 +3528,9 @@ impl PostgresCommerceCatalogStore {
             .bind(command.title.as_deref())
             .bind(sale_price_minor)
             .bind(list_price_minor)
+            .bind(cost_price_minor)
+            .bind(barcode)
+            .bind(weight_gram)
             .bind(&effective_currency)
             .bind(currency.scale())
             .bind(command.fulfillment_type.map(|value| value.as_storage_str()))
@@ -2182,11 +3539,13 @@ impl PostgresCommerceCatalogStore {
                     .inventory_tracking
                     .map(|value| value.as_storage_str()),
             )
+            .bind(command.inventory_policy.map(|value| value.as_storage_str()))
             .bind(command.status.map(|value| value.as_storage_str()))
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
             .bind(command.metadata.as_ref())
+            .bind(&command.actor)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update sku", error))?;
@@ -2212,6 +3571,7 @@ impl PostgresCommerceCatalogStore {
             .map_err(|error| store_error("failed to commit sku update", error))?;
 
         let mut sku = map_sku_row(&row)?;
+        fill_currency_symbols(&self.pool, std::slice::from_mut(&mut sku)).await?;
         match replaced_axes {
             Some(axes) => sku.attribute_values = axes,
             None => {
@@ -2234,6 +3594,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .execute(&self.pool)
             .await
             .map_err(|error| store_error("failed to delete sku", error))?
@@ -2337,6 +3698,7 @@ impl PostgresCommerceCatalogStore {
             .bind(&command.resource_snapshot)
             .bind(command.alt_text.as_deref())
             .bind(command.sort_order)
+            .bind(&command.actor)
             .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to create media", error))?;
@@ -2399,6 +3761,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update media", error))?;
@@ -2435,6 +3798,7 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
+            .bind(&command.actor)
             .execute(&self.pool)
             .await
             .map_err(|error| store_error("failed to delete media", error))?
@@ -2460,6 +3824,7 @@ impl PostgresCommerceCatalogStore {
 
 struct LockedCategory {
     parent_id: Option<i64>,
+    back_parent_id: Option<i64>,
     path: String,
     depth: i64,
 }
@@ -2481,6 +3846,9 @@ async fn lock_category(
     let parent_id = row
         .try_get("parent_id")
         .map_err(|error| store_error("failed to read category parent", error))?;
+    let back_parent_id = row
+        .try_get("back_parent_id")
+        .map_err(|error| store_error("failed to read category back parent", error))?;
     let path = row
         .try_get("path")
         .map_err(|error| store_error("failed to read category path", error))?;
@@ -2490,6 +3858,7 @@ async fn lock_category(
 
     Ok(LockedCategory {
         parent_id,
+        back_parent_id,
         path,
         depth: i64::from(depth),
     })
@@ -2859,6 +4228,149 @@ async fn attach_sku_axes(
     Ok(())
 }
 
+// ------------------------------------------------------------------ product attribute set
+
+/// One attribute entry fully resolved for insert, after the template/type/value checks passed.
+struct ResolvedSpuAttribute {
+    attribute_id: i64,
+    value_id: Option<i64>,
+    raw_value: Option<String>,
+    role: String,
+    sort_order: i64,
+}
+
+/// Loads and attaches the key/parameter attribute sets of every SPU in a page, in one statement.
+async fn attach_spu_attributes(
+    pool: &PgPool,
+    tenant_id: i64,
+    spus: &mut [SpuRecord],
+) -> Result<(), CommerceServiceError> {
+    if spus.is_empty() {
+        return Ok(());
+    }
+
+    let spu_ids: Vec<i64> = spus.iter().map(|spu| spu.id).collect();
+    let rows = sqlx::query(LIST_SPU_ATTRIBUTES_FOR_SPUS_SQL)
+        .bind(tenant_id)
+        .bind(&spu_ids)
+        .fetch_all(pool)
+        .await
+        .map_err(|error| store_error("failed to load product attributes", error))?;
+
+    let mut grouped: HashMap<i64, Vec<SpuAttributeRecord>> = HashMap::new();
+    for row in rows.iter() {
+        let spu_id = bigint_cell(row, "spu_id");
+        let record = SpuAttributeRecord {
+            attribute_id: bigint_cell(row, "attribute_id"),
+            attribute_no: string_cell(row, "attribute_no"),
+            attribute_name: string_cell(row, "attribute_name"),
+            attribute_role: string_cell(row, "attribute_role"),
+            attribute_value_id: optional_bigint_cell(row, "attribute_value_id"),
+            display_value: optional_string_cell(row, "display_value"),
+            raw_value: optional_string_cell(row, "raw_value"),
+            sort_order: bigint_cell(row, "sort_order"),
+        };
+        grouped.entry(spu_id).or_default().push(record);
+    }
+
+    for spu in spus.iter_mut() {
+        spu.attributes = grouped.remove(&spu.id).unwrap_or_default();
+    }
+    Ok(())
+}
+
+/// Resolves the display symbols of one page of records in one statement.
+///
+/// The symbol lives in `commerce_currency`, which the row-level statements do not join — a join
+/// would multiply the page by nothing (one currency row per code) but would break
+/// `INSERT ... RETURNING`, which cannot reference other tables. One batched lookup per page keeps
+/// the read model whole without putting a `JOIN` on every statement.
+async fn fill_currency_symbols(
+    pool: &PgPool,
+    skus: &mut [SkuRecord],
+) -> Result<(), CommerceServiceError> {
+    if skus.is_empty() {
+        return Ok(());
+    }
+    let codes: Vec<String> = skus.iter().map(|sku| sku.currency_code.clone()).collect();
+    let symbols = load_currency_symbols(pool, &codes).await?;
+    for sku in skus.iter_mut() {
+        sku.currency_symbol = symbols.get(&sku.currency_code).cloned().unwrap_or_default();
+    }
+    Ok(())
+}
+
+/// Same lookup for price lists, whose symbol rides on the list record.
+async fn fill_price_list_symbols(
+    pool: &PgPool,
+    lists: &mut [PriceListRecord],
+) -> Result<(), CommerceServiceError> {
+    if lists.is_empty() {
+        return Ok(());
+    }
+    let codes: Vec<String> = lists
+        .iter()
+        .map(|list| list.currency_code.clone())
+        .collect();
+    let symbols = load_currency_symbols(pool, &codes).await?;
+    for list in lists.iter_mut() {
+        list.currency_symbol = symbols
+            .get(&list.currency_code)
+            .cloned()
+            .unwrap_or_default();
+    }
+    Ok(())
+}
+
+/// Reads `display_symbol` for a set of currency codes.
+///
+/// A code with no row — possible only if a currency was retired between the page read and this
+/// lookup — maps to the empty string rather than inventing a symbol; the code itself is still on
+/// the record, so the console falls back to rendering the ISO code.
+async fn load_currency_symbols(
+    pool: &PgPool,
+    codes: &[String],
+) -> Result<HashMap<String, String>, CommerceServiceError> {
+    let rows =
+        sqlx::query("SELECT code, display_symbol FROM commerce_currency WHERE code = ANY($1)")
+            .bind(codes)
+            .fetch_all(pool)
+            .await
+            .map_err(|error| store_error("failed to load currency symbols", error))?;
+
+    let mut symbols = HashMap::new();
+    for row in rows.iter() {
+        let code: String = row
+            .try_get("code")
+            .map_err(|error| store_error("failed to read currency code", error))?;
+        let symbol: Option<String> = row
+            .try_get("display_symbol")
+            .map_err(|error| store_error("failed to read currency symbol", error))?;
+        symbols.insert(code, symbol.unwrap_or_default());
+    }
+    Ok(symbols)
+}
+
+/// Locks the live row a guarded write targets.
+///
+/// The lock-decide-write shape needs the row's stored values before it can decide what to write, and
+/// the row lock is what keeps that decision race-free: a concurrent writer either commits before the
+/// lock arrives (the caller's `If-Match` then answers stale against the newer row) or waits. Returns
+/// `None` when no live row exists, which the caller maps to its own not-found error.
+async fn lock_live_row(
+    transaction: &mut Transaction<'_, Postgres>,
+    select_sql: &'static str,
+    tenant_id: i64,
+    id: i64,
+) -> Result<Option<sqlx::postgres::PgRow>, CommerceServiceError> {
+    sqlx::query(select_sql)
+        .bind(tenant_id)
+        .bind(id)
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(|error| store_error("failed to lock the row a guarded write targets", error))
+}
+
 // ------------------------------------------------------------------ media ownership
 
 /// Refuses an attachment whose owner does not exist.
@@ -2905,6 +4417,7 @@ fn map_category_row(row: &sqlx::postgres::PgRow) -> CategoryRecord {
         organization_id: bigint_cell(row, "organization_id"),
         category_no: string_cell(row, "category_no"),
         parent_id: optional_bigint_cell(row, "parent_id"),
+        back_parent_id: optional_bigint_cell(row, "back_parent_id"),
         path: string_cell(row, "path"),
         depth: i64::from(smallint_cell(row, "depth")),
         is_leaf: boolean_cell(row, "is_leaf"),
@@ -2925,11 +4438,48 @@ fn map_attribute_row(row: &sqlx::postgres::PgRow) -> AttributeRecord {
         attribute_no: string_cell(row, "attribute_no"),
         name: string_cell(row, "name"),
         value_type: string_cell(row, "value_type"),
+        input_hint: string_cell(row, "input_hint"),
+        is_multi_value: boolean_cell(row, "is_multi_value"),
+        unit_symbol: optional_string_cell(row, "unit_symbol"),
         status: string_cell(row, "status"),
         sort_order: bigint_cell(row, "sort_order"),
         version: bigint_cell(row, "version"),
         created_at: timestamp_cell(row, "created_at"),
         updated_at: timestamp_cell(row, "updated_at"),
+    }
+}
+
+fn map_attribute_value_row(row: &sqlx::postgres::PgRow) -> AttributeValueRecord {
+    AttributeValueRecord {
+        id: bigint_cell(row, "id"),
+        tenant_id: bigint_cell(row, "tenant_id"),
+        organization_id: bigint_cell(row, "organization_id"),
+        attribute_id: bigint_cell(row, "attribute_id"),
+        value_code: string_cell(row, "value_code"),
+        display_value: string_cell(row, "display_value"),
+        color_hex: optional_string_cell(row, "color_hex"),
+        media_resource_id: optional_bigint_cell(row, "media_resource_id"),
+        sort_order: bigint_cell(row, "sort_order"),
+        status: string_cell(row, "status"),
+        version: bigint_cell(row, "version"),
+        created_at: timestamp_cell(row, "created_at"),
+        updated_at: timestamp_cell(row, "updated_at"),
+    }
+}
+
+/// Maps one joined `commerce_product_spu_attribute` row. `display_value` comes from the optional
+/// dictionary join, so a `raw_value` row reads back with a `None` there — which is exactly the
+/// distinction the two carriers exist to make.
+fn map_spu_attribute_row(row: &sqlx::postgres::PgRow) -> SpuAttributeRecord {
+    SpuAttributeRecord {
+        attribute_id: bigint_cell(row, "attribute_id"),
+        attribute_no: string_cell(row, "attribute_no"),
+        attribute_name: string_cell(row, "attribute_name"),
+        attribute_role: string_cell(row, "attribute_role"),
+        attribute_value_id: optional_bigint_cell(row, "attribute_value_id"),
+        display_value: optional_string_cell(row, "display_value"),
+        raw_value: optional_string_cell(row, "raw_value"),
+        sort_order: bigint_cell(row, "sort_order"),
     }
 }
 
@@ -2941,7 +4491,10 @@ fn map_price_list_row(row: &sqlx::postgres::PgRow) -> PriceListRecord {
         price_list_no: string_cell(row, "price_list_no"),
         name: string_cell(row, "name"),
         currency_code: string_cell(row, "currency_code"),
+        // Filled by `fill_price_list_symbols` after the rows are mapped.
+        currency_symbol: String::new(),
         market_code: optional_string_cell(row, "market_code"),
+        customer_segment: optional_string_cell(row, "customer_segment"),
         status: string_cell(row, "status"),
         starts_at: optional_timestamp_cell(row, "starts_at"),
         ends_at: optional_timestamp_cell(row, "ends_at"),
@@ -2951,6 +4504,10 @@ fn map_price_list_row(row: &sqlx::postgres::PgRow) -> PriceListRecord {
     }
 }
 
+/// Maps one `commerce_product_spu` row.
+///
+/// `attributes` starts empty because the set lives in a second table and is loaded for a whole page
+/// at once. Callers attach it through [`attach_spu_attributes`], the same way a SKU's axes arrive.
 fn map_spu_row(row: &sqlx::postgres::PgRow) -> SpuRecord {
     SpuRecord {
         id: bigint_cell(row, "id"),
@@ -2963,12 +4520,18 @@ fn map_spu_row(row: &sqlx::postgres::PgRow) -> SpuRecord {
         subtitle: optional_string_cell(row, "subtitle"),
         description: optional_string_cell(row, "description"),
         product_type: string_cell(row, "product_type"),
+        model_no: optional_string_cell(row, "model_no"),
+        barcode: optional_string_cell(row, "barcode"),
+        weight_gram: optional_bigint_cell(row, "weight_gram"),
+        volume_ml: optional_bigint_cell(row, "volume_ml"),
+        tax_class_code: optional_string_cell(row, "tax_class_code"),
         status: string_cell(row, "status"),
         sales_status: string_cell(row, "sales_status"),
         published_at: optional_timestamp_cell(row, "published_at"),
         version: bigint_cell(row, "version"),
         created_at: timestamp_cell(row, "created_at"),
         updated_at: timestamp_cell(row, "updated_at"),
+        attributes: Vec::new(),
     }
 }
 
@@ -2997,11 +4560,18 @@ pub(crate) fn map_sku_row(row: &sqlx::postgres::PgRow) -> Result<SkuRecord, Comm
         name: optional_string_cell(row, "name"),
         title: optional_string_cell(row, "title"),
         currency_code: string_cell(row, "currency_code"),
+        // Filled by `fill_currency_symbols` after the rows are mapped; the symbol lives in
+        // `commerce_currency`, which the row-level statements do not join.
+        currency_symbol: String::new(),
         price_scale: i64::from(smallint_cell(row, "price_scale")),
         sale_price_minor: bigint_cell(row, "sale_price_minor"),
         list_price_minor: optional_bigint_cell(row, "list_price_minor"),
+        cost_price_minor: optional_bigint_cell(row, "cost_price_minor"),
+        barcode: optional_string_cell(row, "barcode"),
+        weight_gram: optional_bigint_cell(row, "weight_gram"),
         fulfillment_type: string_cell(row, "fulfillment_type"),
         inventory_tracking: string_cell(row, "inventory_tracking"),
+        inventory_policy: string_cell(row, "inventory_policy"),
         status: string_cell(row, "status"),
         sales_status: string_cell(row, "sales_status"),
         published_at: optional_timestamp_cell(row, "published_at"),
@@ -3011,6 +4581,24 @@ pub(crate) fn map_sku_row(row: &sqlx::postgres::PgRow) -> Result<SkuRecord, Comm
         attribute_values: Vec::new(),
         metadata,
     })
+}
+
+fn map_price_list_item_row(row: &sqlx::postgres::PgRow) -> PriceListItemRecord {
+    PriceListItemRecord {
+        id: bigint_cell(row, "id"),
+        tenant_id: bigint_cell(row, "tenant_id"),
+        organization_id: bigint_cell(row, "organization_id"),
+        price_list_id: bigint_cell(row, "price_list_id"),
+        sku_id: bigint_cell(row, "sku_id"),
+        currency_code: string_cell(row, "currency_code"),
+        price_scale: i64::from(smallint_cell(row, "price_scale")),
+        price_minor: bigint_cell(row, "price_minor"),
+        min_quantity: bigint_cell(row, "min_quantity"),
+        status: string_cell(row, "status"),
+        version: bigint_cell(row, "version"),
+        created_at: timestamp_cell(row, "created_at"),
+        updated_at: timestamp_cell(row, "updated_at"),
+    }
 }
 
 fn map_sku_axis_row(row: &sqlx::postgres::PgRow) -> (i64, SkuAxisRecord) {

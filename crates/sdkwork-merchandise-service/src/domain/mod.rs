@@ -58,15 +58,77 @@ pub enum FulfillmentType {
 
 /// `commerce_product_sku.inventory_tracking`.
 ///
-/// The baseline also constrains `inventory_policy` to `('deny', 'backorder')` with
-/// `inventory_tracking = 'quantity' OR inventory_policy = 'deny'`. This type therefore describes
-/// only whether stock is counted; the policy is derived from it, never set independently.
+/// Whether stock is counted for this SKU. The fact that stock counts live in
+/// `sdkwork-inventory` does not move: this column is the *declaration* the inventory owner reads,
+/// not a quantity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InventoryTrackingMode {
     /// Stored as `quantity`.
     Tracked,
     /// Stored as `none`.
     Untracked,
+}
+
+/// `commerce_product_sku.inventory_policy`.
+///
+/// What happens when a tracked SKU's available quantity runs out: `deny` refuses the order,
+/// `backorder` accepts it against future stock. The baseline pairs the two declarations with
+/// `ck_commerce_product_sku_policy_requires_tracking` — `backorder` on an untracked SKU is
+/// nonsense, because there is no stock to run out of — so a command that states `backorder`
+/// without `quantity` tracking is refused before it reaches SQL.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InventoryPolicy {
+    /// Stored as `deny`.
+    Deny,
+    /// Stored as `backorder`.
+    Backorder,
+}
+
+/// `commerce_product_attribute.value_type`.
+///
+/// The type decides how a caller fills the attribute in and what a read model can do with the
+/// value: `enum` selects from the dictionary this attribute owns, and the other four accept typed
+/// free input. `ck_commerce_product_attribute_value_type` is the storage vocabulary.
+///
+/// `Enum` is the only type that can carry dictionary values and the only one that can be bound as a
+/// sales axis — `ck_commerce_product_attribute_multi_value_needs_enum` refuses a multi-value flag on
+/// anything else, and a free-text attribute has no discrete options to build a variant matrix from.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AttributeValueType {
+    Enum,
+    Text,
+    Number,
+    Bool,
+    Date,
+}
+
+/// `commerce_product_attribute.input_hint`.
+///
+/// The hint is presentation metadata for a console: it names the control an operator expects, not a
+/// storage fact. It is kept in the domain (not left to the client) because the baseline stores it
+/// with its own CHECK, so an unknown spelling would be a `23514` instead of a named `422`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AttributeInputHint {
+    Select,
+    MultiSelect,
+    Text,
+    Number,
+    Toggle,
+    Date,
+}
+
+/// The role an attribute value takes on an SPU: `commerce_product_spu_attribute.attribute_role`.
+///
+/// The SPU carries the identifying and descriptive facts of the product; the buyer-selectable
+/// combinations live on the SKU, so the `sales` role — legal on a category binding and on a SKU axis
+/// — is not a value this table's CHECK admits. `ck_commerce_product_spu_attribute_role` is the
+/// storage vocabulary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpuAttributeRole {
+    /// Stored as `key`.
+    Key,
+    /// Stored as `parameter`.
+    Parameter,
 }
 
 /// The shared `('active', 'inactive')` lifecycle vocabulary.
@@ -340,6 +402,31 @@ impl InventoryTrackingMode {
     }
 }
 
+impl InventoryPolicy {
+    #[must_use]
+    pub const fn as_storage_str(self) -> &'static str {
+        match self {
+            Self::Deny => "deny",
+            Self::Backorder => "backorder",
+        }
+    }
+
+    pub fn from_storage_str(raw: &str) -> Result<Self, CommerceServiceError> {
+        let value = match raw {
+            "deny" => Self::Deny,
+            "backorder" => Self::Backorder,
+            _ => {
+                return Err(unknown_value(
+                    "inventory_policy",
+                    raw,
+                    INVENTORY_POLICY_VALUES,
+                ))
+            }
+        };
+        Ok(value)
+    }
+}
+
 impl LifecycleStatus {
     #[must_use]
     pub const fn as_storage_str(self) -> &'static str {
@@ -359,13 +446,106 @@ impl LifecycleStatus {
     }
 }
 
+impl AttributeValueType {
+    #[must_use]
+    pub const fn as_storage_str(self) -> &'static str {
+        match self {
+            Self::Enum => "enum",
+            Self::Text => "text",
+            Self::Number => "number",
+            Self::Bool => "bool",
+            Self::Date => "date",
+        }
+    }
+
+    pub fn from_storage_str(raw: &str) -> Result<Self, CommerceServiceError> {
+        let value = match raw {
+            "enum" => Self::Enum,
+            "text" => Self::Text,
+            "number" => Self::Number,
+            "bool" => Self::Bool,
+            "date" => Self::Date,
+            _ => {
+                return Err(unknown_value(
+                    "value_type",
+                    raw,
+                    ATTRIBUTE_VALUE_TYPE_VALUES,
+                ))
+            }
+        };
+        Ok(value)
+    }
+}
+
+impl AttributeInputHint {
+    #[must_use]
+    pub const fn as_storage_str(self) -> &'static str {
+        match self {
+            Self::Select => "select",
+            Self::MultiSelect => "multi_select",
+            Self::Text => "text",
+            Self::Number => "number",
+            Self::Toggle => "toggle",
+            Self::Date => "date",
+        }
+    }
+
+    pub fn from_storage_str(raw: &str) -> Result<Self, CommerceServiceError> {
+        let value = match raw {
+            "select" => Self::Select,
+            "multi_select" => Self::MultiSelect,
+            "text" => Self::Text,
+            "number" => Self::Number,
+            "toggle" => Self::Toggle,
+            "date" => Self::Date,
+            _ => {
+                return Err(unknown_value(
+                    "input_hint",
+                    raw,
+                    ATTRIBUTE_INPUT_HINT_VALUES,
+                ))
+            }
+        };
+        Ok(value)
+    }
+}
+
+impl SpuAttributeRole {
+    #[must_use]
+    pub const fn as_storage_str(self) -> &'static str {
+        match self {
+            Self::Key => "key",
+            Self::Parameter => "parameter",
+        }
+    }
+
+    pub fn from_storage_str(raw: &str) -> Result<Self, CommerceServiceError> {
+        let value = match raw {
+            "key" => Self::Key,
+            "parameter" => Self::Parameter,
+            _ => {
+                return Err(unknown_value(
+                    "attribute_role",
+                    raw,
+                    SPU_ATTRIBUTE_ROLE_VALUES,
+                ))
+            }
+        };
+        Ok(value)
+    }
+}
+
 const PRODUCT_TYPE_VALUES: &str = "physical, digital, membership, points, service";
 const PRODUCT_STATUS_VALUES: &str = "draft, active, inactive, archived";
 const FULFILLMENT_TYPE_VALUES: &str =
     "physical, digital, membership_activation, points_topup, service";
 const INVENTORY_TRACKING_VALUES: &str = "none, quantity";
+const INVENTORY_POLICY_VALUES: &str = "deny, backorder";
 const LIFECYCLE_STATUS_VALUES: &str = "active, inactive";
 const ATTRIBUTE_ROLE_VALUES: &str = "key, sales, parameter";
+const ATTRIBUTE_VALUE_TYPE_VALUES: &str = "enum, text, number, bool, date";
+const ATTRIBUTE_INPUT_HINT_VALUES: &str = "select, multi_select, text, number, toggle, date";
+const SPU_ATTRIBUTE_ROLE_VALUES: &str = "key, parameter";
 const MEDIA_OWNER_TYPE_VALUES: &str = "spu, sku, category, attribute_value";
 const MEDIA_ROLE_VALUES: &str =
     "main_image, gallery_image, detail_image, sku_image, video, manual, certificate";

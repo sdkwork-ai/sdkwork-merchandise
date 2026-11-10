@@ -25,6 +25,35 @@ pub struct AttributeListQuery {
     pub page_size: Option<i64>,
 }
 
+/// Reads one attribute.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttributeRetrieveQuery {
+    pub tenant_id: String,
+    pub attribute_id: String,
+}
+
+/// Lists one attribute's dictionary values.
+///
+/// `attribute_id` is required — a value without its attribute is meaningless, and the collection is
+/// always read in the context of one attribute's editor — so it is an address rather than an
+/// optional filter.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttributeValueListQuery {
+    pub tenant_id: String,
+    pub organization_id: Option<String>,
+    pub attribute_id: String,
+    pub status: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+/// Reads one product's key/parameter attribute set.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProductAttributesRetrieveQuery {
+    pub tenant_id: String,
+    pub spu_id: String,
+}
+
 /// Lists price lists.
 ///
 /// `currency_code` and `market_code` exist because a price list is only meaningful inside one
@@ -35,6 +64,30 @@ pub struct PriceListListQuery {
     pub organization_id: Option<String>,
     pub currency_code: Option<String>,
     pub market_code: Option<String>,
+    pub customer_segment: Option<String>,
+    pub status: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+/// Reads one price list.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PriceListRetrieveQuery {
+    pub tenant_id: String,
+    pub price_list_id: String,
+}
+
+/// Lists the priced rows of one price list.
+///
+/// `price_list_id` is required: a row only means something inside one list's currency and time
+/// window, and the collection is always read in the context of one list's editor. `sku_id`
+/// narrows to one SKU's ladder, which is the question a price editor asks most.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PriceListItemListQuery {
+    pub tenant_id: String,
+    pub organization_id: Option<String>,
+    pub price_list_id: String,
+    pub sku_id: Option<String>,
     pub status: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
@@ -172,7 +225,12 @@ macro_rules! impl_query_new {
 impl_query_new!(CategoryListQuery, required: [tenant_id], optional: [organization_id, parent_id, status], page: [page, page_size]);
 impl_query_new!(CategoryRetrieveQuery, required: [tenant_id, category_id], optional: []);
 impl_query_new!(AttributeListQuery, required: [tenant_id], optional: [organization_id, status], page: [page, page_size]);
-impl_query_new!(PriceListListQuery, required: [tenant_id], optional: [organization_id, currency_code, market_code, status], page: [page, page_size]);
+impl_query_new!(AttributeRetrieveQuery, required: [tenant_id, attribute_id], optional: []);
+impl_query_new!(PriceListRetrieveQuery, required: [tenant_id, price_list_id], optional: []);
+impl_query_new!(AttributeValueListQuery, required: [tenant_id, attribute_id], optional: [organization_id, status], page: [page, page_size]);
+impl_query_new!(ProductAttributesRetrieveQuery, required: [tenant_id, spu_id], optional: []);
+impl_query_new!(PriceListListQuery, required: [tenant_id], optional: [organization_id, currency_code, market_code, customer_segment, status], page: [page, page_size]);
+impl_query_new!(PriceListItemListQuery, required: [tenant_id, price_list_id], optional: [organization_id, sku_id, status], page: [page, page_size]);
 impl_query_new!(CategoryAttributeListQuery, required: [tenant_id], optional: [organization_id, category_id, attribute_id, status], page: [page, page_size]);
 impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, q, category_id, product_type, status, sort], page: [page, page_size]);
 impl_query_new!(ProductSpuRetrieveQuery, required: [tenant_id, spu_id], optional: []);

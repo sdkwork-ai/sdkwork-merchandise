@@ -86,6 +86,7 @@ const SQL_NON_COLUMN_WORDS = new Set([
   // functions
   "count", "sum", "min", "max", "coalesce", "cast", "now", "char_length",
   "lower", "upper", "trim", "concat", "string_agg", "array_agg",
+  "substring", "left", "right", "greatest", "least",
   "gen_random_uuid",
   // types
   "text", "bigint", "smallint", "integer", "numeric", "jsonb", "uuid", "date",
@@ -100,9 +101,17 @@ const ALIAS_STOP_WORDS = new Set([
   "using", "as", "cross", "full", "natural",
 ]);
 
-/** String literals and `$n` placeholders are not identifiers. */
+/**
+ * String literals, `$n` placeholders, and SQL line comments are not identifiers.
+ *
+ * The statements carry authoring comments (`-- why this shape`), and a comment's
+ * prose words are exactly as absent from the schema as a string literal is.
+ */
 function stripLiterals(statement) {
-  return statement.replace(/'(?:[^']|'')*'/g, " ").replace(/\$\d+/g, " ");
+  return statement
+    .replace(/'(?:[^']|'')*'/g, " ")
+    .replace(/\$\d+/g, " ")
+    .replace(/--[^\n]*/g, " ");
 }
 
 /** Table aliases declared by the statement, so `sku.status` reads as `status`. */
@@ -119,8 +128,15 @@ function statementAliases(statement) {
 
 /** Column candidates in a statement: identifiers, minus keywords and aliases. */
 function referencedColumns(statement) {
-  const body = stripLiterals(statement);
+  let body = stripLiterals(statement);
   const aliases = statementAliases(body);
+  // `pa.attribute_id` contributes the column `attribute_id`; the qualifier is
+  // an alias reference — declared by this statement's FROM, or by the macro
+  // expansion a column-list fragment rides in — never a column itself.
+  body = body.replace(/\b[A-Za-z_][A-Za-z0-9_]*\./g, " ");
+  // `c.minor_unit_exponent AS price_scale` publishes the read under a different
+  // name; the output alias is not a column the statement reads.
+  body = body.replace(/\bAS\s+[A-Za-z_][A-Za-z0-9_]*/gi, " ");
   const names = new Set();
   for (const match of body.matchAll(/\b([a-z][a-z0-9_]*)\b/g)) {
     const word = match[1];
@@ -137,11 +153,80 @@ function referencedColumns(statement) {
  *
  * Catalog SQL lives in raw string literals (`r#"..."#`), so a naive
  * single-quote scan silently finds nothing. Both forms are collected here.
+ *
+ * Comments are stripped first, line by line. A `//`-comment can carry prose with a double quote in
+ * it ("not mentioned"), and the raw quote-pairing scan would then treat the text between that quote
+ * and the next quote in the file — real string or comment — as one literal, swallowing Rust code
+ * into a fake "statement". A comment can never be part of a SQL statement, so removing it first
+ * cannot hide a violation; it only stops the scanner from pairing comment punctuation with code.
+ */
+/**
+ * Pull SQL out of Rust source.
+ *
+ * A naive quote-pairing regex cannot lex Rust: a string may continue across a
+ * line with a trailing `\` (`.` in `\\.` never matches the newline), a raw
+ * string (`r#"..."#`) carries unescaped quotes, and a `//`-comment can carry
+ * prose with a double quote in it ("not mentioned") that the raw quote-pairing
+ * would otherwise pair with the next quote in the file — swallowing Rust code
+ * into a fake "statement". A single-pass scanner tracks the three states so the
+ * string list is exactly what the compiler lexes. A comment can never be part
+ * of a SQL statement, so skipping it cannot hide a violation.
  */
 function sqlStatements(source) {
   const blocks = [];
-  for (const match of source.matchAll(/r#*"([\s\S]*?)"#*/g)) blocks.push(match[1]);
-  for (const match of source.matchAll(/"(?:\\.|[^"\\])*"/g)) blocks.push(match[0].slice(1, -1));
+  let i = 0;
+  const n = source.length;
+  while (i < n) {
+    // Raw string: `r`, optional `#`s, `"`, closed by `"` + the same `#`s. The
+    // `r` must not continue an identifier (`...parameter"` ends a normal
+    // string in `r`).
+    if (source[i] === "r" && !/[A-Za-z0-9_]/.test(source[i - 1] ?? " ")) {
+      let hashes = 0;
+      let j = i + 1;
+      while (source[j] === "#") {
+        hashes += 1;
+        j += 1;
+      }
+      if (source[j] === `"`) {
+        const terminator = `"` + `#`.repeat(hashes);
+        const end = source.indexOf(terminator, j + 1);
+        const stop = end === -1 ? n : end + terminator.length;
+        blocks.push(source.slice(j + 1, end === -1 ? n : end));
+        i = stop;
+        continue;
+      }
+    }
+    if (source[i] === `"`) {
+      let j = i + 1;
+      let body = "";
+      while (j < n) {
+        if (source[j] === `\\`) {
+          // An escape pair, including the `\`-newline line continuation.
+          body += source.slice(j, j + 2).replace(/\\\n/g, "");
+          j += 2;
+          continue;
+        }
+        if (source[j] === `"`) {
+          break;
+        }
+        body += source[j];
+        j += 1;
+      }
+      blocks.push(body);
+      i = j + 1;
+      continue;
+    }
+    if (source[i] === `/` && source[i + 1] === `/`) {
+      while (i < n && source[i] !== `\n`) i += 1;
+      continue;
+    }
+    if (source[i] === `/` && source[i + 1] === `*`) {
+      const end = source.indexOf(`*/`, i + 2);
+      i = end === -1 ? n : end + 2;
+      continue;
+    }
+    i += 1;
+  }
   return blocks.filter((block) => /\b(SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/.test(block));
 }
 

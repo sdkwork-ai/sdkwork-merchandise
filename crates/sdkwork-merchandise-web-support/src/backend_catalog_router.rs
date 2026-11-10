@@ -20,32 +20,42 @@ use std::sync::Arc;
 
 use axum::extract::{Extension, Path, Query, State};
 use axum::response::Response;
-use axum::routing::{get, patch, post};
+use axum::routing::{get, patch, post, put};
 use axum::Router;
 use sdkwork_iam_context_service::IamAppContext;
 use sdkwork_merchandise_service::{
-    ArchiveSpuCommand, AttributeListQuery, AttributeRole, CategoryAttributeListQuery,
-    CategoryListQuery, CreateAttributeCommand, CreateCategoryAttributeCommand,
-    CreateCategoryCommand, CreateMediaCommand, CreatePriceListCommand, CreateProductSkuCommand,
-    CreateProductSpuCommand, DeleteCategoryAttributeCommand, DeleteCategoryCommand,
-    DeleteMediaCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, FulfillmentType,
-    GuardedWrite, InventoryTrackingMode, LifecycleStatus, MediaListQuery, MediaOwnerType,
-    MediaRole, PriceListListQuery, ProductSkuListQuery, ProductSpuListQuery,
-    ProductSpuRetrieveQuery, ProductStatus, ProductType, PublishSpuCommand,
+    ArchiveSpuCommand, AttributeInputHint, AttributeListQuery, AttributeRole, AttributeRetrieveQuery,
+    CategoryRetrieveQuery, PriceListRetrieveQuery, ProductSkuRetrieveQuery,
+    AttributeValueListQuery, AttributeValueType, CategoryAttributeListQuery, CategoryListQuery,
+    CreateAttributeCommand, CreateAttributeValueCommand, CreateCategoryAttributeCommand,
+    CreateCategoryCommand, CreateMediaCommand, CreatePriceListCommand, CreatePriceListItemCommand,
+    CreateProductSkuCommand, CreateProductSpuCommand, DeleteAttributeValueCommand,
+    DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
+    DeletePriceListItemCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, FulfillmentType,
+    GuardedWrite, InventoryPolicy, InventoryTrackingMode, LifecycleStatus, MediaListQuery,
+    MediaOwnerType, MediaRole, PriceListItemListQuery, PriceListListQuery,
+    ProductAttributeValueInput, ProductSkuListQuery, ProductSpuListQuery, ProductSpuRetrieveQuery,
+    ProductStatus, ProductType, PublishSpuCommand, ReplaceProductAttributesCommand,
+    SpuAttributeRole, UpdateAttributeCommand, UpdateAttributeValueCommand,
     UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
-    UpdatePriceListCommand, UpdateProductSkuCommand, UpdateProductSpuCommand,
+    UpdatePriceListCommand, UpdatePriceListItemCommand, UpdateProductSkuCommand,
+    UpdateProductSpuCommand,
 };
 
 use super::{
-    catalog_error_response, expected_version_from_if_match, map_attribute, map_category,
-    map_category_attribute, map_media, map_price_list, map_product, map_sku, not_found_response,
-    stale_version_response, success_created_resource, success_no_content, success_offset_page,
-    success_resource_with_etag, unauthorized_response, validation_response, AttributeQueryParams,
+    catalog_error_response, expected_version_from_if_match, map_attribute, map_attribute_value,
+    map_category, map_category_attribute, map_media, map_price_list, map_price_list_item,
+    map_product, map_product_attributes, map_sku, not_found_response, stale_version_response,
+    success_created_resource, success_no_content, success_offset_page, success_resource_with_etag,
+    unauthorized_response, validation_response, AttributeQueryParams, AttributeValueQueryParams,
     CatalogJson, CatalogRepositoryPort, CatalogState, CategoryAttributeQueryParams,
-    CategoryQueryParams, CreateAttributeBody, CreateCategoryAttributeBody, CreateCategoryBody,
-    CreateMediaBody, CreatePriceListBody, CreateSkuBody, CreateSpuBody, MediaQueryParams,
-    PriceListQueryParams, ProductListQueryParams, SkuListQueryParams, UpdateCategoryAttributeBody,
-    UpdateCategoryBody, UpdateMediaBody, UpdatePriceListBody, UpdateSkuBody, UpdateSpuBody,
+    CategoryQueryParams, CreateAttributeBody, CreateAttributeValueBody,
+    CreateCategoryAttributeBody, CreateCategoryBody, CreateMediaBody, CreatePriceListBody,
+    CreatePriceListItemBody, CreateSkuBody, CreateSpuBody, MediaQueryParams,
+    PriceListItemQueryParams, PriceListQueryParams, ProductListQueryParams,
+    ReplaceProductAttributesBody, SkuListQueryParams, UpdateAttributeBody,
+    UpdateAttributeValueBody, UpdateCategoryAttributeBody, UpdateCategoryBody, UpdateMediaBody,
+    UpdatePriceListBody, UpdatePriceListItemBody, UpdateSkuBody, UpdateSpuBody,
 };
 use crate::subject::app_runtime_subject_from_extension;
 
@@ -143,7 +153,9 @@ pub fn build_backend_catalog_router(store: Arc<dyn CatalogRepositoryPort>) -> Ro
         )
         .route(
             "/backend/v3/api/catalog/categories/{categoryId}",
-            patch(backend_update_category).delete(backend_delete_category),
+            get(backend_retrieve_category)
+                .patch(backend_update_category)
+                .delete(backend_delete_category),
         )
         .route(
             "/backend/v3/api/catalog/products",
@@ -169,11 +181,29 @@ pub fn build_backend_catalog_router(store: Arc<dyn CatalogRepositoryPort>) -> Ro
         )
         .route(
             "/backend/v3/api/catalog/skus/{skuId}",
-            patch(backend_update_sku).delete(backend_delete_sku),
+            get(backend_retrieve_sku)
+                .patch(backend_update_sku)
+                .delete(backend_delete_sku),
         )
         .route(
             "/backend/v3/api/catalog/attributes",
             get(backend_list_attributes).post(backend_create_attribute),
+        )
+        .route(
+            "/backend/v3/api/catalog/attributes/{attributeId}",
+            get(backend_retrieve_attribute).patch(backend_update_attribute),
+        )
+        .route(
+            "/backend/v3/api/catalog/attribute_values",
+            get(backend_list_attribute_values).post(backend_create_attribute_value),
+        )
+        .route(
+            "/backend/v3/api/catalog/attribute_values/{valueId}",
+            patch(backend_update_attribute_value).delete(backend_delete_attribute_value),
+        )
+        .route(
+            "/backend/v3/api/catalog/products/{productId}/attributes",
+            put(backend_replace_product_attributes),
         )
         .route(
             "/backend/v3/api/catalog/category_attributes",
@@ -189,7 +219,15 @@ pub fn build_backend_catalog_router(store: Arc<dyn CatalogRepositoryPort>) -> Ro
         )
         .route(
             "/backend/v3/api/catalog/price_lists/{priceListId}",
-            patch(backend_update_price_list),
+            get(backend_retrieve_price_list).patch(backend_update_price_list),
+        )
+        .route(
+            "/backend/v3/api/catalog/price_list_items",
+            get(backend_list_price_list_items).post(backend_create_price_list_item),
+        )
+        .route(
+            "/backend/v3/api/catalog/price_list_items/{itemId}",
+            patch(backend_update_price_list_item).delete(backend_delete_price_list_item),
         )
         .route(
             "/backend/v3/api/catalog/media",
@@ -248,11 +286,14 @@ async fn backend_create_category(
     };
     let sort_order =
         parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
+    let actor = subject.user_id.clone();
     let command = CreateCategoryCommand {
+        actor,
         tenant_id: subject.tenant_id,
         organization_id,
         category_no: body.category_no,
         parent_id: body.parent_id,
+        back_parent_id: body.back_parent_id,
         name: body.name,
         sort_order,
     };
@@ -291,11 +332,14 @@ async fn backend_update_category(
         None => None,
     };
     let sort_order = parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref());
+    let actor = subject.user_id.clone();
     let command = UpdateCategoryCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         category_id,
         parent_id: body.parent_id,
+        back_parent_id: body.back_parent_id,
         name: body.name,
         sort_order,
         status,
@@ -332,7 +376,9 @@ async fn backend_delete_category(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    let actor = subject.user_id.clone();
     let command = DeleteCategoryCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         category_id,
@@ -421,7 +467,9 @@ async fn backend_create_product(
         None => return validation_response("organization_id is required"),
     };
     let product_type = parse_or_422!(ProductType::from_storage_str(&body.product_type));
+    let actor = subject.user_id.clone();
     let command = CreateProductSpuCommand {
+        actor,
         tenant_id: subject.tenant_id,
         organization_id,
         spu_no: body.product_no,
@@ -430,6 +478,11 @@ async fn backend_create_product(
         description: body.description,
         product_type,
         category_id: body.category_id,
+        model_no: body.model_no,
+        barcode: body.barcode,
+        weight_gram: parse_optional_int64_or_400!("weightGram", body.weight_gram.as_deref()),
+        volume_ml: parse_optional_int64_or_400!("volumeMl", body.volume_ml.as_deref()),
+        tax_class_code: body.tax_class_code,
     };
     match command.validate() {
         Ok(()) => {}
@@ -465,7 +518,9 @@ async fn backend_update_product(
         Some(raw) => Some(parse_or_422!(ProductStatus::from_storage_str(raw))),
         None => None,
     };
+    let actor = subject.user_id.clone();
     let command = UpdateProductSpuCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         spu_id: product_id,
@@ -473,6 +528,11 @@ async fn backend_update_product(
         subtitle: body.subtitle,
         description: body.description,
         category_id: body.category_id,
+        model_no: body.model_no,
+        barcode: body.barcode,
+        weight_gram: parse_tri_state_int64_or_400!("weightGram", &body.weight_gram),
+        volume_ml: parse_tri_state_int64_or_400!("volumeMl", &body.volume_ml),
+        tax_class_code: body.tax_class_code,
         status,
     };
     match command.validate() {
@@ -507,7 +567,9 @@ async fn backend_delete_product(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    let actor = subject.user_id.clone();
     let command = DeleteProductSpuCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         spu_id: product_id,
@@ -540,7 +602,9 @@ async fn backend_publish_product(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    let actor = subject.user_id.clone();
     let command = PublishSpuCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         spu_id: product_id,
@@ -577,7 +641,9 @@ async fn backend_archive_product(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    let actor = subject.user_id.clone();
     let command = ArchiveSpuCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         spu_id: product_id,
@@ -649,7 +715,9 @@ async fn backend_create_sku(
     let inventory_tracking = parse_or_422!(InventoryTrackingMode::from_storage_str(
         &body.inventory_tracking
     ));
+    let actor = subject.user_id.clone();
     let command = CreateProductSkuCommand {
+        actor,
         tenant_id: subject.tenant_id,
         organization_id,
         spu_id: body.product_id,
@@ -658,6 +726,13 @@ async fn backend_create_sku(
         title: body.title,
         sale_price_minor,
         list_price_minor,
+        cost_price_minor: parse_optional_int64_or_400!(
+            "costPriceMinor",
+            body.cost_price_minor.as_deref()
+        ),
+        barcode: body.barcode,
+        weight_gram: parse_optional_int64_or_400!("weightGram", body.weight_gram.as_deref()),
+        inventory_policy: parse_or_422!(InventoryPolicy::from_storage_str(&body.inventory_policy,)),
         currency_code: body.currency_code,
         fulfillment_type,
         inventory_tracking,
@@ -712,7 +787,9 @@ async fn backend_update_sku(
         Some(raw) => Some(parse_or_422!(ProductStatus::from_storage_str(raw))),
         None => None,
     };
+    let actor = subject.user_id.clone();
     let command = UpdateProductSkuCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         sku_id,
@@ -720,6 +797,13 @@ async fn backend_update_sku(
         title: body.title,
         sale_price_minor,
         list_price_minor,
+        cost_price_minor: parse_tri_state_int64_or_400!("costPriceMinor", &body.cost_price_minor),
+        barcode: body.barcode,
+        weight_gram: parse_tri_state_int64_or_400!("weightGram", &body.weight_gram),
+        inventory_policy: match body.inventory_policy.as_deref() {
+            Some(raw) => Some(parse_or_422!(InventoryPolicy::from_storage_str(raw))),
+            None => None,
+        },
         currency_code: body.currency_code,
         fulfillment_type,
         inventory_tracking,
@@ -763,7 +847,9 @@ async fn backend_delete_sku(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    let actor = subject.user_id.clone();
     let command = DeleteProductSkuCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         sku_id,
@@ -822,11 +908,22 @@ async fn backend_create_attribute(
         Some(id) => id.to_owned(),
         None => return validation_response("organization_id is required"),
     };
+    let value_type = parse_or_422!(AttributeValueType::from_storage_str(&body.value_type));
+    let input_hint = parse_or_422!(AttributeInputHint::from_storage_str(&body.input_hint));
+    let sort_order =
+        parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
+    let actor = subject.user_id.clone();
     let command = CreateAttributeCommand {
+        actor,
         tenant_id: subject.tenant_id,
         organization_id,
         attribute_no: body.attribute_no,
         name: body.name,
+        value_type,
+        input_hint,
+        is_multi_value: body.is_multi_value.unwrap_or(false),
+        unit_symbol: body.unit_symbol,
+        sort_order,
         values: body.values.unwrap_or_default(),
     };
     match command.validate() {
@@ -886,7 +983,9 @@ async fn backend_create_category_attribute(
     };
     let sort_order =
         parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
+    let actor = subject.user_id.clone();
     let command = CreateCategoryAttributeCommand {
+        actor,
         tenant_id: subject.tenant_id,
         organization_id,
         category_id: body.category_id,
@@ -930,7 +1029,9 @@ async fn backend_update_category_attribute(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    let actor = subject.user_id.clone();
     let command = UpdateCategoryAttributeCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         binding_id,
@@ -984,7 +1085,9 @@ async fn backend_delete_category_attribute(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    let actor = subject.user_id.clone();
     let command = DeleteCategoryAttributeCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         binding_id,
@@ -1016,6 +1119,7 @@ async fn backend_list_price_lists(
         subject.organization_id.as_deref(),
         params.currency_code.as_deref(),
         params.market_code.as_deref(),
+        params.customer_segment.as_deref(),
         params.status.as_deref(),
         params.page,
         params.page_size,
@@ -1047,10 +1151,14 @@ async fn backend_create_price_list(
         Some(id) => id.to_owned(),
         None => return validation_response("organization_id is required"),
     };
+    let actor = subject.user_id.clone();
     let command = CreatePriceListCommand {
+        actor,
         tenant_id: subject.tenant_id,
         organization_id,
         price_list_no: body.price_list_no,
+        name: body.name,
+        customer_segment: body.customer_segment,
         currency_code: body.currency_code,
         market_code: body.market_code,
     };
@@ -1088,10 +1196,14 @@ async fn backend_update_price_list(
         ))),
         None => None,
     };
+    let actor = subject.user_id.clone();
     let command = UpdatePriceListCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         price_list_id,
+        name: body.name,
+        customer_segment: body.customer_segment,
         status,
         starts_at: body.starts_at,
         ends_at: body.ends_at,
@@ -1108,6 +1220,545 @@ async fn backend_update_price_list(
         }
         Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("price list", stale),
         Err(error) => catalog_error_response("failed to update price list", error),
+    }
+}
+
+async fn backend_update_attribute(
+    headers: axum::http::HeaderMap,
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(attribute_id): Path<String>,
+    CatalogJson(body): CatalogJson<UpdateAttributeBody>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+
+    // Read before the body is used for anything, so a request that did not say which version it is
+    // editing is refused with `428` rather than being allowed to reach a write.
+    let expected_version = match expected_version_from_if_match(&headers) {
+        Ok(version) => version,
+        Err(response) => return *response,
+    };
+    let status = match body.status.as_deref() {
+        Some(raw) => Some(parse_or_422!(LifecycleStatus::from_storage_str(
+            "status", raw
+        ))),
+        None => None,
+    };
+    let sort_order = parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref());
+    let actor = subject.user_id.clone();
+    let command = UpdateAttributeCommand {
+        actor,
+        tenant_id: subject.tenant_id,
+        expected_version,
+        attribute_id,
+        name: body.name,
+        unit_symbol: body.unit_symbol,
+        sort_order,
+        status,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.update_attribute(command).await {
+        Ok(GuardedWrite::Applied(data)) => {
+            // The row's version *after* the write, which is what the next `If-Match` must name.
+            let version = data.version;
+            success_resource_with_etag(map_attribute(data), version)
+        }
+        Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("attribute", stale),
+        Err(error) => catalog_error_response("failed to update attribute", error),
+    }
+}
+
+async fn backend_list_attribute_values(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Query(params): Query<AttributeValueQueryParams>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let query = match AttributeValueListQuery::new(
+        &subject.tenant_id,
+        &params.attribute_id,
+        subject.organization_id.as_deref(),
+        params.status.as_deref(),
+        params.page,
+        params.page_size,
+    ) {
+        Ok(query) => query,
+        Err(error) => return validation_response(error.message()),
+    };
+    match state.store.list_attribute_values_page(query).await {
+        Ok(data) => success_offset_page(
+            data.items.into_iter().map(map_attribute_value).collect(),
+            data.page,
+            data.page_size,
+            data.total_items,
+        ),
+        Err(error) => catalog_error_response("attribute value list is unavailable", error),
+    }
+}
+
+/// Creates one dictionary value.
+///
+/// The repository re-checks, inside the transaction, that the attribute exists, belongs to the
+/// tenant, and is an `enum` — the rules a command cannot see, because they live on the attribute
+/// row the value extends.
+async fn backend_create_attribute_value(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    CatalogJson(body): CatalogJson<CreateAttributeValueBody>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let organization_id = match subject.organization_id.as_deref() {
+        Some(id) => id.to_owned(),
+        None => return validation_response("organization_id is required"),
+    };
+    let sort_order =
+        parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
+    let actor = subject.user_id.clone();
+    let command = CreateAttributeValueCommand {
+        actor,
+        tenant_id: subject.tenant_id,
+        organization_id,
+        attribute_id: body.attribute_id,
+        value_code: body.value_code,
+        display_value: body.display_value,
+        color_hex: body.color_hex,
+        media_resource_id: body.media_resource_id,
+        sort_order,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.create_attribute_value(command).await {
+        Ok(data) => success_created_resource(map_attribute_value(data)),
+        Err(error) => catalog_error_response("failed to create attribute value", error),
+    }
+}
+
+async fn backend_update_attribute_value(
+    headers: axum::http::HeaderMap,
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(value_id): Path<String>,
+    CatalogJson(body): CatalogJson<UpdateAttributeValueBody>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+
+    // Read before the body is used for anything, so a request that did not say which version it is
+    // editing is refused with `428` rather than being allowed to reach a write.
+    let expected_version = match expected_version_from_if_match(&headers) {
+        Ok(version) => version,
+        Err(response) => return *response,
+    };
+    let status = match body.status.as_deref() {
+        Some(raw) => Some(parse_or_422!(LifecycleStatus::from_storage_str(
+            "status", raw
+        ))),
+        None => None,
+    };
+    let sort_order = parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref());
+    let actor = subject.user_id.clone();
+    let command = UpdateAttributeValueCommand {
+        actor,
+        tenant_id: subject.tenant_id,
+        expected_version,
+        attribute_value_id: value_id,
+        display_value: body.display_value,
+        color_hex: body.color_hex,
+        media_resource_id: body.media_resource_id,
+        sort_order,
+        status,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.update_attribute_value(command).await {
+        Ok(GuardedWrite::Applied(data)) => {
+            // The row's version *after* the write, which is what the next `If-Match` must name.
+            let version = data.version;
+            success_resource_with_etag(map_attribute_value(data), version)
+        }
+        Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("attribute value", stale),
+        Err(error) => catalog_error_response("failed to update attribute value", error),
+    }
+}
+
+/// Retires one dictionary value.
+///
+/// A value a live SKU variant still sits on is refused by the repository with a `409`: the request
+/// is well-formed, the value is simply in use, and a variant whose axis value is gone is a variant
+/// the buyer can no longer select.
+async fn backend_delete_attribute_value(
+    headers: axum::http::HeaderMap,
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(value_id): Path<String>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+
+    // Read before the body is used for anything, so a request that did not say which version it is
+    // editing is refused with `428` rather than being allowed to reach a write.
+    let expected_version = match expected_version_from_if_match(&headers) {
+        Ok(version) => version,
+        Err(response) => return *response,
+    };
+    let actor = subject.user_id.clone();
+    let command = DeleteAttributeValueCommand {
+        actor,
+        tenant_id: subject.tenant_id,
+        expected_version,
+        attribute_value_id: value_id,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.delete_attribute_value(command).await {
+        Ok(GuardedWrite::Applied(())) => success_no_content(),
+        Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("attribute value", stale),
+        Err(error) => catalog_error_response("failed to delete attribute value", error),
+    }
+}
+
+/// Replaces a product's whole key/parameter attribute set.
+///
+/// `PUT` on the sub-collection is the whole-set write the semantics demand: the detail page renders
+/// the set as one table, and a partial edit cannot express "this product no longer lists a warranty
+/// term". The `If-Match` names the **product's** version, because the set is part of the product
+/// aggregate — the response's `ETag` carries the product version the write left behind.
+async fn backend_replace_product_attributes(
+    headers: axum::http::HeaderMap,
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(product_id): Path<String>,
+    CatalogJson(body): CatalogJson<ReplaceProductAttributesBody>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+
+    // Read before the body is used for anything, so a request that did not say which version it is
+    // editing is refused with `428` rather than being allowed to reach a write.
+    let expected_version = match expected_version_from_if_match(&headers) {
+        Ok(version) => version,
+        Err(response) => return *response,
+    };
+    let mut attributes = Vec::with_capacity(body.attributes.len());
+    for entry in body.attributes {
+        let role = parse_or_422!(SpuAttributeRole::from_storage_str(&entry.role));
+        let sort_order =
+            parse_optional_int64_or_400!("sortOrder", entry.sort_order.as_deref()).unwrap_or(0);
+        attributes.push(ProductAttributeValueInput {
+            attribute_id: entry.attribute_id,
+            role,
+            attribute_value_id: entry.attribute_value_id,
+            raw_value: entry.raw_value,
+            sort_order,
+        });
+    }
+    let actor = subject.user_id.clone();
+    let command = ReplaceProductAttributesCommand {
+        actor,
+        tenant_id: subject.tenant_id,
+        spu_id: product_id,
+        attributes,
+        expected_version,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.replace_spu_attributes(command).await {
+        Ok(GuardedWrite::Applied(data)) => {
+            // The product row's version *after* the write, which is what the next `If-Match` on the
+            // product must name.
+            let version = data.version;
+            success_resource_with_etag(map_product_attributes(data), version)
+        }
+        Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("product", stale),
+        Err(error) => catalog_error_response("failed to replace product attributes", error),
+    }
+}
+
+async fn backend_retrieve_category(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(category_id): Path<String>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let query = match CategoryRetrieveQuery::new(&subject.tenant_id, &category_id) {
+        Ok(query) => query,
+        Err(error) => return validation_response(error.message()),
+    };
+    match state.store.retrieve_category(query).await {
+        Ok(Some(data)) => {
+            // `GET` publishes the version as `ETag` as well as in the body, so a client can hold
+            // the header and hand it straight back as  without parsing the payload.
+            let version = data.version;
+            success_resource_with_etag(map_category(data), version)
+        }
+        Ok(None) => not_found_response("category was not found"),
+        Err(error) => catalog_error_response("category read model is unavailable", error),
+    }
+}
+
+async fn backend_retrieve_sku(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(sku_id): Path<String>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let query = match ProductSkuRetrieveQuery::new(&subject.tenant_id, &sku_id) {
+        Ok(query) => query,
+        Err(error) => return validation_response(error.message()),
+    };
+    match state.store.retrieve_sku(query).await {
+        Ok(Some(data)) => {
+            let version = data.version;
+            success_resource_with_etag(map_sku(data), version)
+        }
+        Ok(None) => not_found_response("sku was not found"),
+        Err(error) => catalog_error_response("sku read model is unavailable", error),
+    }
+}
+
+async fn backend_retrieve_attribute(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(attribute_id): Path<String>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let query = match AttributeRetrieveQuery::new(&subject.tenant_id, &attribute_id) {
+        Ok(query) => query,
+        Err(error) => return validation_response(error.message()),
+    };
+    match state.store.retrieve_attribute(query).await {
+        Ok(Some(data)) => {
+            let version = data.version;
+            success_resource_with_etag(map_attribute(data), version)
+        }
+        Ok(None) => not_found_response("attribute was not found"),
+        Err(error) => catalog_error_response("attribute read model is unavailable", error),
+    }
+}
+
+async fn backend_retrieve_price_list(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(price_list_id): Path<String>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let query = match PriceListRetrieveQuery::new(&subject.tenant_id, &price_list_id) {
+        Ok(query) => query,
+        Err(error) => return validation_response(error.message()),
+    };
+    match state.store.retrieve_price_list(query).await {
+        Ok(Some(data)) => {
+            let version = data.version;
+            success_resource_with_etag(map_price_list(data), version)
+        }
+        Ok(None) => not_found_response("price list was not found"),
+        Err(error) => catalog_error_response("price list read model is unavailable", error),
+    }
+}
+
+// ------------------------------------------------------------------ price list items
+//
+// The priced row of a list is where the two-layer price design becomes real: the SKU carries the
+// base price, the list item carries the override for a market, a segment, a ladder step, and a time
+// window. The collection is flat — `/price_list_items?priceListId=` — matching `/skus?productId=`
+// and `/media?ownerType=&ownerId=`, because the row's storage identity is the list it hangs off
+// and a nested path would add a spelling without adding an address.
+//
+// The list is the currency authority: the create path inherits `currency_code` and `price_scale`
+// from the list row inside the transaction, so a request cannot quote money the list does not deal
+// in (`fk_commerce_price_list_item_list_currency` would refuse it, but inheriting makes the refusal
+// unreachable instead of merely mapped).
+
+async fn backend_list_price_list_items(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Query(params): Query<PriceListItemQueryParams>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let query = match PriceListItemListQuery::new(
+        &subject.tenant_id,
+        &params.list_id,
+        subject.organization_id.as_deref(),
+        params.sku_id.as_deref(),
+        params.status.as_deref(),
+        params.page,
+        params.page_size,
+    ) {
+        Ok(query) => query,
+        Err(error) => return validation_response(error.message()),
+    };
+    match state.store.list_price_list_items_page(query).await {
+        Ok(data) => success_offset_page(
+            data.items.into_iter().map(map_price_list_item).collect(),
+            data.page,
+            data.page_size,
+            data.total_items,
+        ),
+        Err(error) => catalog_error_response("price list item list is unavailable", error),
+    }
+}
+
+async fn backend_create_price_list_item(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    CatalogJson(body): CatalogJson<CreatePriceListItemBody>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let organization_id = match subject.organization_id.as_deref() {
+        Some(id) => id.to_owned(),
+        None => return validation_response("organization_id is required"),
+    };
+    let price_minor = parse_int64_or_400!("priceMinor", &body.price_minor);
+    let min_quantity =
+        parse_optional_int64_or_400!("minQuantity", body.min_quantity.as_deref()).unwrap_or(1);
+    let actor = subject.user_id.clone();
+    let command = CreatePriceListItemCommand {
+        actor,
+        tenant_id: subject.tenant_id,
+        organization_id,
+        price_list_id: body.list_id,
+        sku_id: body.sku_id,
+        price_minor,
+        min_quantity,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.create_price_list_item(command).await {
+        Ok(data) => success_created_resource(map_price_list_item(data)),
+        Err(error) => catalog_error_response("failed to create price list item", error),
+    }
+}
+
+async fn backend_update_price_list_item(
+    headers: axum::http::HeaderMap,
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(item_id): Path<String>,
+    CatalogJson(body): CatalogJson<UpdatePriceListItemBody>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+
+    // Read before the body is used for anything, so a request that did not say which version it is
+    // editing is refused with `428` rather than being allowed to reach a write.
+    let expected_version = match expected_version_from_if_match(&headers) {
+        Ok(version) => version,
+        Err(response) => return *response,
+    };
+    let status = match body.status.as_deref() {
+        Some(raw) => Some(parse_or_422!(LifecycleStatus::from_storage_str(
+            "status", raw
+        ))),
+        None => None,
+    };
+    let actor = subject.user_id.clone();
+    let command = UpdatePriceListItemCommand {
+        actor,
+        tenant_id: subject.tenant_id,
+        expected_version,
+        price_list_item_id: item_id,
+        price_minor: parse_optional_int64_or_400!("priceMinor", body.price_minor.as_deref()),
+        min_quantity: parse_optional_int64_or_400!("minQuantity", body.min_quantity.as_deref()),
+        status,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.update_price_list_item(command).await {
+        Ok(GuardedWrite::Applied(data)) => {
+            // The row's version *after* the write, which is what the next `If-Match` must name.
+            let version = data.version;
+            success_resource_with_etag(map_price_list_item(data), version)
+        }
+        Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("price list item", stale),
+        Err(error) => catalog_error_response("failed to update price list item", error),
+    }
+}
+
+/// Retires one priced row. The delete is a soft delete: the row keeps its history and the tier
+/// slot (`uk_commerce_price_list_item_tier` is partial on `deleted_at IS NULL`) is freed for a
+/// replacement step.
+async fn backend_delete_price_list_item(
+    headers: axum::http::HeaderMap,
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(item_id): Path<String>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+
+    // Read before the body is used for anything, so a request that did not say which version it is
+    // editing is refused with `428` rather than being allowed to reach a write.
+    let expected_version = match expected_version_from_if_match(&headers) {
+        Ok(version) => version,
+        Err(response) => return *response,
+    };
+    let actor = subject.user_id.clone();
+    let command = DeletePriceListItemCommand {
+        actor,
+        tenant_id: subject.tenant_id,
+        expected_version,
+        price_list_item_id: item_id,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.delete_price_list_item(command).await {
+        Ok(GuardedWrite::Applied(())) => success_no_content(),
+        Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("price list item", stale),
+        Err(error) => catalog_error_response("failed to delete price list item", error),
     }
 }
 
@@ -1204,7 +1855,9 @@ async fn backend_create_media(
     let media_role = parse_or_422!(MediaRole::from_storage_str("mediaRole", &body.media_role));
     let sort_order =
         parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
+    let actor = subject.user_id.clone();
     let command = CreateMediaCommand {
+        actor,
         tenant_id: subject.tenant_id,
         organization_id,
         owner_type,
@@ -1258,7 +1911,9 @@ async fn backend_update_media(
         ))),
         None => None,
     };
+    let actor = subject.user_id.clone();
     let command = UpdateMediaCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         media_id,
@@ -1305,7 +1960,9 @@ async fn backend_delete_media(
         Ok(version) => version,
         Err(response) => return *response,
     };
+    let actor = subject.user_id.clone();
     let command = DeleteMediaCommand {
+        actor,
         tenant_id: subject.tenant_id,
         expected_version,
         media_id,
@@ -1433,3 +2090,174 @@ mod request_body_tests {
         assert!(super::parse_optional_int64("sortOrder", Some("seven")).is_err());
     }
 }
+
+#[cfg(test)]
+mod guarded_write_tests {
+    //! Drives a full write route into a store double, which is the layer the request-body probe
+    //! above cannot reach: the precondition is read, the command is built with the actor from the
+    //! IAM context, the store answers, and the response carries the version as both `ETag` and
+    //! body field. `TECH_ARCHITECTURE.md` section 9 records why this needs a port double and no
+    //! database: the router holds `Arc<dyn CatalogRepositoryPort>`, so the composition root decides
+    //! what arrives, and this module decides it arrives from memory.
+
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{header, Request, StatusCode};
+    use sdkwork_merchandise_service::{
+        ArchiveSpuCommand, AttributeListQuery, AttributeRetrieveQuery, AttributeValueListQuery,
+        CategoryAttributeListQuery, CategoryListQuery, CategoryRetrieveQuery, CreateAttributeCommand,
+        CreateAttributeValueCommand, CreateCategoryAttributeCommand, CreateCategoryCommand,
+        CreateMediaCommand, CreatePriceListItemCommand, CreatePriceListCommand,
+        CreateProductSkuCommand, CreateProductSpuCommand, DeleteAttributeValueCommand,
+        DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
+        DeletePriceListItemCommand, DeleteProductSkuCommand, DeleteProductSpuCommand,
+        MediaListQuery, PriceListItemListQuery, PriceListItemRecord, PriceListListQuery,
+        PriceListRetrieveQuery, ProductAttributesRetrieveQuery, ProductSkuListQuery,
+        ProductSkuRetrieveQuery, ProductSpuListQuery, ProductSpuRetrieveQuery, PublishSpuCommand,
+        ReplaceProductAttributesCommand, UpdateAttributeCommand, UpdateAttributeValueCommand,
+        UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
+        UpdatePriceListItemCommand, UpdatePriceListCommand, UpdateProductSkuCommand,
+        UpdateProductSpuCommand,
+    };
+
+    /// A port double whose `update_category` applies and every other method is unreachable.
+    ///
+    /// The routes under test call exactly one method; everything else returning an error keeps an
+    /// accidental second store call loud instead of silently successful.
+    struct UpdateCategoryOnly;
+
+    fn category_record() -> CategoryRecord {
+        CategoryRecord {
+            id: 1000,
+            tenant_id: 1,
+            organization_id: 1,
+            category_no: "cat-1".to_owned(),
+            parent_id: None,
+            back_parent_id: None,
+            path: "/1000/".to_owned(),
+            depth: 0,
+            is_leaf: true,
+            name: "Apparel".to_owned(),
+            sort_order: 0,
+            status: "active".to_owned(),
+            version: 7,
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            attributes: Vec::new(),
+        }
+    }
+
+    macro_rules! unreachable_port_method {
+        ($name:ident, $query:ty, $out:ty) => {
+            fn $name<'a>(&'a self, _: $query) -> CommerceCatalogFuture<'a, $out> {
+                Box::pin(async {
+                    Err(CommerceServiceError::storage("not reachable in this test"))
+                })
+            }
+        };
+    }
+
+    impl CatalogRepositoryPort for UpdateCategoryOnly {
+        fn list_categories<'a>(
+            &'a self,
+            _: CategoryListQuery,
+        ) -> CommerceCatalogFuture<'a, Vec<CategoryRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn list_categories_page<'a>(
+            &'a self,
+            _: CategoryListQuery,
+        ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<CategoryRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn retrieve_category<'a>(
+            &'a self,
+            _: CategoryRetrieveQuery,
+        ) -> CommerceCatalogFuture<'a, Option<CategoryRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn create_category<'a>(
+            &'a self,
+            command: CreateCategoryCommand,
+        ) -> CommerceCatalogFuture<'a, CategoryRecord> {
+            let _ = command;
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn update_category<'a>(
+            &'a self,
+            command: UpdateCategoryCommand,
+        ) -> CommerceCatalogFuture<'a, GuardedWrite<CategoryRecord>> {
+            // The actor must arrive threaded from the IAM context; the double refuses a write
+            // without one, which is what makes the audit-actor wiring observable here.
+            let mut record = category_record();
+            record.version = command.expected_version + 1;
+            Box::pin(async move {
+                assert_eq!(command.actor, "user-1", "the write must carry the actor");
+                Ok(GuardedWrite::Applied(record))
+            })
+        }
+        fn delete_category<'a>(
+            &'a self,
+            _: DeleteCategoryCommand,
+        ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn list_attributes<'a>(
+            &'a self,
+            _: AttributeListQuery,
+        ) -> CommerceCatalogFuture<'a, Vec<AttributeRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn list_attributes_page<'a>(
+            &'a self,
+            _: AttributeListQuery,
+        ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AttributeRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn retrieve_attribute<'a>(
+            &'a self,
+            _: AttributeRetrieveQuery,
+        ) -> CommerceCatalogFuture<'a, Option<AttributeRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn create_attribute<'a>(
+            &'a self,
+            _: CreateAttributeCommand,
+        ) -> CommerceCatalogFuture<'a, AttributeRecord> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn update_attribute<'a>(
+            &'a self,
+            _: UpdateAttributeCommand,
+        ) -> CommerceCatalogFuture<'a, GuardedWrite<AttributeRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn list_attribute_values_page<'a>(
+            &'a self,
+            _: AttributeValueListQuery,
+        ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AttributeValueRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn create_attribute_value<'a>(
+            &'a self,
+            _: CreateAttributeValueCommand,
+        ) -> CommerceCatalogFuture<'a, AttributeValueRecord> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn update_attribute_value<'a>(
+            &'a self,
+            _: UpdateAttributeValueCommand,
+        ) -> CommerceCatalogFuture<'a, GuardedWrite<AttributeValueRecord>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn delete_attribute_value<'a>(
+            &'a self,
+            _: DeleteAttributeValueCommand,
+        ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
+            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
+        }
+        fn list_category_attributes<'a>(
+            &'a self,
+            _: CategoryAttributeListQuery,
+        ) -> CommerceCatalogFuture<'a, Vec<CategoryAttributeRecord>> {
+            Box::pin(async { Err(CommerceServiceEr

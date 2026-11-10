@@ -91,6 +91,23 @@ pub fn require_non_negative(field: &str, value: i64) -> Result<(), CommerceServi
     Ok(())
 }
 
+/// `ck_commerce_product_attribute_value_color_hex`.
+///
+/// A swatch colour is `#RRGGBB`. The pattern is the schema's, not a policy choice: checking it here
+/// keeps a malformed colour a named `422` instead of a `23514` raised mid-transaction inside
+/// PostgreSQL.
+pub fn require_color_hex(field: &str, value: &str) -> Result<(), CommerceServiceError> {
+    let hex = value.strip_prefix('#').unwrap_or(value);
+    let is_six_hex = hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit());
+    if !is_six_hex {
+        return Err(CommerceServiceError::validation(format!(
+            "{field} must be a `#RRGGBB` colour, got `{value}`"
+        )));
+    }
+
+    Ok(())
+}
+
 /// Rejects a collection that names the same id twice.
 ///
 /// `commerce_product_sku_attribute` carries

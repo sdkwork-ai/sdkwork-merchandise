@@ -51,6 +51,11 @@ Thumbs.db
 .workbuddy/
 **/.workbuddy/
 
+# Local investigation scratch notes and temp scripts (never commit)
+.zcode/plans/
+tools/find-multiline-strings.mjs
+tools/find-sql-offender.mjs
+
 # --- SDKWork: gitignore completeness (2026-10-16) ---
 # Added by repo-commit task; targeted rules only, compliant with check-gitignore-standard
 __pycache__/

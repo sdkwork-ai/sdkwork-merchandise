@@ -1,22 +1,27 @@
-import { isBlank, slugify } from "@sdkwork/utils";
+import { isBlank } from "@sdkwork/utils";
 
 import type {
   CreateProductInput,
   ProductProfile,
 } from "@sdkwork/merchandise-contracts";
 
+/**
+ * Normalizes one create input against the authority contract: both required
+ * fields are trimmed, blank business keys are refused at the boundary, and the
+ * value that reaches the request is exactly what the caller stated.
+ */
 export function normalizeCreateProductInput(
   input: CreateProductInput,
 ): CreateProductInput {
-  const name = input.name.trim();
-  const slug = slugify(input.slug.trim() || name);
-  if (isBlank(name)) {
-    throw new Error("merchandise name is required");
+  const productNo = input.productNo.trim();
+  const title = input.title.trim();
+  if (isBlank(productNo)) {
+    throw new Error("merchandise productNo is required");
   }
-  if (isBlank(slug)) {
-    throw new Error("merchandise slug is required");
+  if (isBlank(title)) {
+    throw new Error("merchandise title is required");
   }
-  return { name, slug };
+  return { productNo, title };
 }
 
 export function formatProductHeadline(profile: ProductProfile): string {
