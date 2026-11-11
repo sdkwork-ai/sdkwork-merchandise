@@ -2103,18 +2103,22 @@ mod guarded_write_tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{header, Request, StatusCode};
+    use sdkwork_contract_service::CommerceServiceError;
     use sdkwork_merchandise_service::{
-        ArchiveSpuCommand, AttributeListQuery, AttributeRetrieveQuery, AttributeValueListQuery,
-        CategoryAttributeListQuery, CategoryListQuery, CategoryRetrieveQuery, CreateAttributeCommand,
+        ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRetrieveQuery,
+        AttributeValueListQuery, AttributeValueRecord, CatalogOffsetPage,
+        CategoryAttributeListQuery, CategoryAttributeRecord, CategoryListQuery, CategoryRecord,
+        CategoryRetrieveQuery, CommerceCatalogFuture, CreateAttributeCommand,
         CreateAttributeValueCommand, CreateCategoryAttributeCommand, CreateCategoryCommand,
         CreateMediaCommand, CreatePriceListItemCommand, CreatePriceListCommand,
         CreateProductSkuCommand, CreateProductSpuCommand, DeleteAttributeValueCommand,
         DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
-        DeletePriceListItemCommand, DeleteProductSkuCommand, DeleteProductSpuCommand,
-        MediaListQuery, PriceListItemListQuery, PriceListItemRecord, PriceListListQuery,
-        PriceListRetrieveQuery, ProductAttributesRetrieveQuery, ProductSkuListQuery,
-        ProductSkuRetrieveQuery, ProductSpuListQuery, ProductSpuRetrieveQuery, PublishSpuCommand,
-        ReplaceProductAttributesCommand, UpdateAttributeCommand, UpdateAttributeValueCommand,
+        DeletePriceListItemCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, MediaListQuery,
+        MediaRecord, PriceListItemListQuery, PriceListItemRecord, PriceListListQuery,
+        PriceListRecord, PriceListRetrieveQuery, ProductAttributesRetrieveQuery,
+        ProductAttributesWrite, ProductSkuListQuery, ProductSkuRetrieveQuery, ProductSpuListQuery,
+        ProductSpuRetrieveQuery, PublishSpuCommand, ReplaceProductAttributesCommand, SkuRecord,
+        SpuAttributeRecord, SpuRecord, UpdateAttributeCommand, UpdateAttributeValueCommand,
         UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
         UpdatePriceListItemCommand, UpdatePriceListCommand, UpdateProductSkuCommand,
         UpdateProductSpuCommand,
@@ -2143,7 +2147,6 @@ mod guarded_write_tests {
             version: 7,
             created_at: "2026-01-01T00:00:00Z".to_owned(),
             updated_at: "2026-01-01T00:00:00Z".to_owned(),
-            attributes: Vec::new(),
         }
     }
 
@@ -2256,8 +2259,173 @@ mod guarded_write_tests {
         ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
             Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
         }
-        fn list_category_attributes<'a>(
-            &'a self,
-            _: CategoryAttributeListQuery,
-        ) -> CommerceCatalogFuture<'a, Vec<CategoryAttributeRecord>> {
-            Box::pin(async { Err(CommerceServiceEr
+        unreachable_port_method!(
+            list_spu_attributes,
+            ProductAttributesRetrieveQuery,
+            Vec<SpuAttributeRecord>
+        );
+        unreachable_port_method!(
+            replace_spu_attributes,
+            ReplaceProductAttributesCommand,
+            GuardedWrite<ProductAttributesWrite>
+        );
+        unreachable_port_method!(
+            list_price_lists,
+            PriceListListQuery,
+            Vec<PriceListRecord>
+        );
+        unreachable_port_method!(
+            list_price_lists_page,
+            PriceListListQuery,
+            CatalogOffsetPage<PriceListRecord>
+        );
+        unreachable_port_method!(
+            create_price_list,
+            CreatePriceListCommand,
+            PriceListRecord
+        );
+        unreachable_port_method!(
+            retrieve_price_list,
+            PriceListRetrieveQuery,
+            Option<PriceListRecord>
+        );
+        unreachable_port_method!(
+            update_price_list,
+            UpdatePriceListCommand,
+            GuardedWrite<PriceListRecord>
+        );
+        unreachable_port_method!(
+            list_price_list_items,
+            PriceListItemListQuery,
+            Vec<PriceListItemRecord>
+        );
+        unreachable_port_method!(
+            list_price_list_items_page,
+            PriceListItemListQuery,
+            CatalogOffsetPage<PriceListItemRecord>
+        );
+        unreachable_port_method!(
+            create_price_list_item,
+            CreatePriceListItemCommand,
+            PriceListItemRecord
+        );
+        unreachable_port_method!(
+            update_price_list_item,
+            UpdatePriceListItemCommand,
+            GuardedWrite<PriceListItemRecord>
+        );
+        unreachable_port_method!(
+            delete_price_list_item,
+            DeletePriceListItemCommand,
+            GuardedWrite<()>
+        );
+        unreachable_port_method!(
+            list_category_attributes,
+            CategoryAttributeListQuery,
+            Vec<CategoryAttributeRecord>
+        );
+        unreachable_port_method!(
+            list_category_attributes_page,
+            CategoryAttributeListQuery,
+            CatalogOffsetPage<CategoryAttributeRecord>
+        );
+        unreachable_port_method!(
+            create_category_attribute,
+            CreateCategoryAttributeCommand,
+            CategoryAttributeRecord
+        );
+        unreachable_port_method!(
+            update_category_attribute,
+            UpdateCategoryAttributeCommand,
+            GuardedWrite<CategoryAttributeRecord>
+        );
+        unreachable_port_method!(
+            delete_category_attribute,
+            DeleteCategoryAttributeCommand,
+            GuardedWrite<()>
+        );
+        unreachable_port_method!(list_spus, ProductSpuListQuery, Vec<SpuRecord>);
+        unreachable_port_method!(
+            list_spus_page,
+            ProductSpuListQuery,
+            CatalogOffsetPage<SpuRecord>
+        );
+        unreachable_port_method!(
+            retrieve_spu,
+            ProductSpuRetrieveQuery,
+            Option<SpuRecord>
+        );
+        unreachable_port_method!(
+            create_spu,
+            CreateProductSpuCommand,
+            SpuRecord
+        );
+        unreachable_port_method!(
+            update_spu,
+            UpdateProductSpuCommand,
+            GuardedWrite<SpuRecord>
+        );
+        unreachable_port_method!(
+            publish_spu,
+            PublishSpuCommand,
+            GuardedWrite<SpuRecord>
+        );
+        unreachable_port_method!(
+            archive_spu,
+            ArchiveSpuCommand,
+            GuardedWrite<SpuRecord>
+        );
+        unreachable_port_method!(
+            delete_spu,
+            DeleteProductSpuCommand,
+            GuardedWrite<()>
+        );
+        unreachable_port_method!(list_skus, ProductSkuListQuery, Vec<SkuRecord>);
+        unreachable_port_method!(
+            list_skus_page,
+            ProductSkuListQuery,
+            CatalogOffsetPage<SkuRecord>
+        );
+        unreachable_port_method!(
+            retrieve_sku,
+            ProductSkuRetrieveQuery,
+            Option<SkuRecord>
+        );
+        unreachable_port_method!(
+            create_sku,
+            CreateProductSkuCommand,
+            SkuRecord
+        );
+        unreachable_port_method!(
+            update_sku,
+            UpdateProductSkuCommand,
+            GuardedWrite<SkuRecord>
+        );
+        unreachable_port_method!(
+            delete_sku,
+            DeleteProductSkuCommand,
+            GuardedWrite<()>
+        );
+        unreachable_port_method!(list_media, MediaListQuery, Vec<MediaRecord>);
+        unreachable_port_method!(
+            list_media_page,
+            MediaListQuery,
+            CatalogOffsetPage<MediaRecord>
+        );
+        unreachable_port_method!(
+            create_media,
+            CreateMediaCommand,
+            MediaRecord
+        );
+        unreachable_port_method!(
+            update_media,
+            UpdateMediaCommand,
+            GuardedWrite<MediaRecord>
+        );
+        unreachable_port_method!(
+            delete_media,
+            DeleteMediaCommand,
+            GuardedWrite<()>
+        );
+    }
+}
