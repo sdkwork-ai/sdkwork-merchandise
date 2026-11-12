@@ -48,7 +48,7 @@
     "en-US": {
       "version": "2.0.0",
       "required": false,
-      "checksum": "sha256:1cd6ac3013bb8eebdb27ce029dd0eab0176d549b0aa58302030a8ebdb9e0253c",
+      "checksum": "sha256:45ae3d5186513e1dad1b37075810c4bfa8dbaa8a1645e0d371e61664658901f1",
       "files": [
         "locales/en-US/001_sku_locale.sql"
       ]

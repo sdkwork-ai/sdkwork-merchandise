@@ -93,3 +93,151 @@ catalog-sql-baseline-closure               → 4/4（表/列/外来表/归属）
 - 详情页规格：Product 内嵌 key/parameter 属性；多语言：`locale` 读参数回退基础行。
 
 剩余跨仓事项（不阻塞本仓商业化）：`sdkwork-order` 的 money 契约对齐、`sdkwork-specs` 的 operationId 段裁决、前缀注册粒度下沉（8 仓联合变更）。
+
+
+## 7. 回归补记（2026-11-12 第二轮回归）
+
+首轮交付后的独立回归探索发现两处**写路径/读路径的真实缺口**，本轮补齐：
+
+1. **翻译 upsert 从未落盘**：首轮的 locale 写脚本在 `create_spu` 锚点失败中止，
+   `upsert_translation` 成了死代码——六个 create/update 均不写翻译行，
+   `command.locale` 被静默忽略。本轮补齐：
+   - 六个 create：事务内按 locale upsert（spu 写 name/title/subtitle/description，
+     sku 写 name/title，brand 写 name/description，其余写 name/display_value）；
+   - 六个 update：非默认 locale 时基础行文本保持存储值（COALESCE/锁行决值），
+     翻译行写入命令文本；默认 locale 行为不变。
+   - `upsert_translation` 死代码 → 15 个调用点。
+2. **单资源 retrieve 无 locale 覆盖**：五个 retrieve（category/spu/sku/brand/attribute）
+   补齐 `attach_*_locale`；`RetrieveQueryParams.locale` 经 HTTP `?locale=` 传入。
+   五个 retrieve 操作的 OpenAPI 补 `locale` 查询参数。
+
+另补齐：品牌演示 seed（`common/003_brands.sql`，保留块 2200..2299）+ en-US 品牌翻译
+（翻译 id 3400..3403，localeSet checksum 同步重算）；媒体 owner 家族 "four tables"
+注释漂移修正（现五类）。
+
+**属性翻译字段注记**：翻译表 CHECK 允许 attribute 的 `unit_symbol/help_text` 与
+attribute_value 的 `help_text` 翻译行，本轮未暴露写入面（单位符号通常不翻译、
+help_text 无 HTTP 输入面）；CHECK 预留，后续按需打开。
+
+
+## 8. 数据库初始化回归（2026-11-12 第三轮）
+
+以「部署新应用即可完整体验」为标准的数据库初始化回归，发现并修复：
+
+1. **P0 语法错误**：`001_merchandise_bootstrap.sql` 的品牌保留块注释丢失 `--`
+   前缀，任何 seed 重跑都会以 Postgres 语法错误中止。
+2. **可售卖图断裂**：SPU 未挂 `brand_id`；course SKU 的 `offering` 轴
+   （1102/1214/1732）无字典支撑；价目表/明细/媒体零数据。本轮补齐：
+   品牌并入 001 bootstrap（先于 SPU，FK 顺序安全）、SPU 1500/1501 挂 2200、
+   offering 轴三行、价目表 2100 + 19 条明细（16 会员 + 1 课程 + 2 阶梯档
+   `min_quantity=12` 演示双层价格）、3 条演示媒体（drive:// 占位）。
+3. **部署即用**：`bootstrap_merchandise_database` 此前从不调用 `seed()`
+   （`seedOnBoot` 死配置）——现已接线；`etc/topology/base.env` 声明
+   `SDKWORK_DATABASE_AUTO_MIGRATE=true` + `SDKWORK_DATABASE_SEED_ON_BOOT=true`
+   并重生成 10 个 topology 文件：**部署即完整初始化**（init→migrate→seed 一次
+   boot 完成），生产环境可通过 env 覆盖关闭。
+4. **集成验证**：`pnpm db:verify:baseline`（真实 Postgres，baseline+seeds
+   应用两遍 + 行数/幂等/签名/coexistence 断言）从 21 failed → **93 passed /
+   0 failed**；verifier 同步更新至 19 表/新行数/三轴。
+5. 课程绑定 1302 移入 002（跟随类目 1001 的声明顺序，消除 FK 顺序陷阱）；
+   演示媒体为 drive:// 占位，生产租户经媒体 API 替换。
+
+**环境矩阵**：development / test / staging / demo / production 全部由
+`etc/topology/base.env` 继承 `AUTO_MIGRATE=true` + `SEED_ON_BOOT=true`
+（seed 为保留块 upsert，不触碰真实租户数据）；生产要关闭时改两个 env 键即可。
+
+
+## 9. 数据库初始化第三轮回归（2026-11-12）
+
+第二轮回归审计确认两处残留并修复：
+
+1. **en-US course 线翻译缺失**：course 产品线（SPU 1501 / SKU 1620 / 属性 1102 /
+   值 1214）零翻译行——en-US 用户看到的整个课程线是中文原文。本轮补齐
+   （翻译 id 3002/3003、3132/3133、3202、3308，均在保留块内），
+   en-US localeSet checksum 同步重算，`db:verify:baseline` 翻译计数同步更新。
+2. **保留块声明漂移**：seed 头部声称保留块「declared in schema.yaml」但
+   schema.yaml 并无此声明。本轮在 `database/contract/schema.yaml` 增补
+   `reservedSeedIdBlocks` 段（13 个块；两个验证器均宽松接受额外键），
+   使声明为真。
+
+已确认无残留：topology 10 文件全量携带 AUTO_MIGRATE/SEED_ON_BOOT；
+价目明细无 (sku, tier) 冲突；`db:validate` 离线可跑，
+`db:seed`/`db:bootstrap` 需 Postgres（SDKWORK_DATABASE_* 连接串）。
+
+
+## 10. 数据库初始化第四轮回归（2026-11-12）
+
+第三轮独立审计确认三处残留并修复：
+
+1. **类目 en-US 翻译缺失**：两类目（1000 会员服务 / 1001 课程）零翻译行——
+   en-US 导航树显示中文类目名。本轮补齐（翻译 id 3500..3503，含 name +
+   description），localeSet checksum 重算，`db:verify:baseline` 增补
+   category_translation=4 断言 → **94 passed / 0 failed**。
+2. **database/README.md 重写**：旧版 24 行仅覆盖 baseline + 空 migrations +
+   8 个命令。新版覆盖：boot 三阶段（baseline→migrations→seeds）、19 表清单、
+   seed 文件与保留块、boot 行为表（manifest 默认 vs topology env 覆盖 vs
+   env 键）、生产关闭方式、CLI 连接（postgres.env.example → postgres.env）、
+   `db:verify:baseline` 94 断言说明。
+3. **死列普查归零**：新鲜普查（19 表全列 vs 非测试 Rust 源 + OpenAPI 属性 +
+   seed 列）发现 **0 个死列**——2026-09-23 的 47 死列盲区全部关闭。
+   TECH_ARCH §9 普查段刷新为归零状态（注明普查为手工维护、每轮回归重测）。
+
+确认无需改动：SKU `inventory_tracking='none'` 是正确演示姿态（库存事实归
+sdkwork-inventory，本模块只声明 tracking/policy）；topology 10 文件全量携带
+AUTO_MIGRATE/SEED_ON_BOOT；`db:validate` 离线可用。
+
+**至此，数据库初始化回归收敛**：完整可售卖图、部署即初始化、五环境矩阵、
+多语言全量、幂等安全、文档与声明一致。
+
+
+## 11. 数据库初始化第五轮回归（2026-11-13）
+
+第四轮独立审计确认三处残留并修复：
+
+1. **容器部署阻断（P0）**：Dockerfile 运行镜像仅拷贝二进制——无 `database/`、
+   无 `SDKWORK_MERCHANDISE_APP_ROOT`，容器启动即死于模块加载。现拷贝
+   `database/` 至 `/app` 并设置 APP_ROOT（路径约定
+   `app_root/database/database.manifest.json` 已核实）。
+2. **SPU 规格表演示缺口**：`commerce_product_spu_attribute` 零数据且类目
+   1000 模板无 parameter/key 绑定——详情页规格表渲染空。本轮补齐：属性
+   1103 服务说明（text）、绑定 1303（parameter）、spu_attribute 1800
+   （raw_value 载体）、en-US 翻译 3203、保留块 1800..1899 双声明、
+   verifier 四处计数 → **95 passed / 0 failed**。
+3. **文档 canon 缺失**：REVIEW-20261112 未入 docs 索引、reviews/README 为
+   重复占位——已索引并修复；CHANGELOG 增补数据库初始化轮条目。
+
+确认无需改动：媒体槽唯一性（三行槽键互异）；`db:validate` 离线可用；
+`db:seed`/`db:bootstrap` 需 Postgres（SDKWORK_DATABASE_* 连接串）。
+
+
+## 12. 数据库初始化第六轮回归：端到端 boot 验证（2026-11-13）
+
+前五轮证明了 SQL 层（`db:verify:baseline` 真实 Postgres 95/95），本轮首次
+对**真实 Postgres 跑通 Rust 应用 boot 路径**（`sdkwork-database-cli bootstrap`
+= init → migrate → seed），发现并修复两个真实部署缺陷：
+
+1. **migration 0002 对 baseline 不幂等（P0）**：W4 将品牌 FK 等价 DDL 同时写入
+   baseline 与 0002，新环境 baseline 先建 FK、0002 再建即
+   `constraint already exists` 中止。修复：0002 全部 `ADD CONSTRAINT` 前置
+   `DROP CONSTRAINT IF EXISTS`（brand FK + 4 个 SKU trade CHECK），
+   对新环境（baseline 已建）与存量环境（pre-brand）均幂等。
+   `db:verify:baseline` 95/95 复验通过。
+2. **共享 dev 库 anchor 冲突（跨仓，记录不修）**：`sdkwork_ai_dev` 被平台
+   60+ 模块共用，兄弟模块（shop/membership/course）创建了同名的
+   `commerce_product_*` 表——merchandise init 的**单表 anchor 检查**看到
+   表存在即跳过 baseline，本模块 19 表 schema 无法落地。这是审计 E1
+   （8 仓抢注 `commerce_` 前缀）在运行时的表现：anchor 应校验 registry
+   全表集而非首表——框架级改进，属 `sdkwork-database` 跨仓事项。
+   本地恢复程序（已验证）：drop merchandise 自有 19 表（无外部 FK 依赖，
+   已核实）+ 清 merchandise ops 三表行 → 重跑 bootstrap。
+   **独立部署（自有数据库）不受影响**：anchor 不存在 → 全量初始化。
+
+**端到端验证结果**（共享 dev 库重置后）：
+`bootstrap complete: 1 migration(s), 5 seed script(s)` → 19 表 / 品牌 2 /
+SPU 2（全挂 brand_id=2200）/ SKU 17 / 规格表 1 / 价目明细 19（含 2 阶梯档）/
+媒体 3 / install state=seeded；`db:seed --locale en-US` 应用 5 文件 →
+双语共存验证（en-US 读类目名返回 Membership/Courses，回退规则生效）。
+
+**框架级注意**：boot 的 `seed(locale)` 只应用该 locale 的 seed 文件——
+多语言演示需 per-locale 一次 `db:seed --locale <locale>`（已写入
+database/README.md）。

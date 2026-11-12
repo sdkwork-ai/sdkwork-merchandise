@@ -87,6 +87,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_commerce_product_brand_translation
 CREATE INDEX IF NOT EXISTS idx_commerce_product_brand_translation_lookup
     ON commerce_product_brand_translation (tenant_id, locale, brand_id);
 
+ALTER TABLE commerce_product_spu DROP CONSTRAINT IF EXISTS fk_commerce_product_spu_brand;
 ALTER TABLE commerce_product_spu
     ADD CONSTRAINT fk_commerce_product_spu_brand
         FOREIGN KEY (brand_id) REFERENCES commerce_product_brand (id);
@@ -101,15 +102,19 @@ ALTER TABLE commerce_product_sku
     ADD COLUMN IF NOT EXISTS package_unit TEXT,
     ADD COLUMN IF NOT EXISTS units_per_package BIGINT;
 
+ALTER TABLE commerce_product_sku DROP CONSTRAINT IF EXISTS ck_commerce_product_sku_min_order_quantity;
 ALTER TABLE commerce_product_sku
     ADD CONSTRAINT ck_commerce_product_sku_min_order_quantity
         CHECK (min_order_quantity >= 1);
+ALTER TABLE commerce_product_sku DROP CONSTRAINT IF EXISTS ck_commerce_product_sku_step_quantity;
 ALTER TABLE commerce_product_sku
     ADD CONSTRAINT ck_commerce_product_sku_step_quantity
         CHECK (step_quantity >= 1);
+ALTER TABLE commerce_product_sku DROP CONSTRAINT IF EXISTS ck_commerce_product_sku_max_order_quantity;
 ALTER TABLE commerce_product_sku
     ADD CONSTRAINT ck_commerce_product_sku_max_order_quantity
         CHECK (max_order_quantity IS NULL OR max_order_quantity >= min_order_quantity);
+ALTER TABLE commerce_product_sku DROP CONSTRAINT IF EXISTS ck_commerce_product_sku_units_per_package;
 ALTER TABLE commerce_product_sku
     ADD CONSTRAINT ck_commerce_product_sku_units_per_package
         CHECK (units_per_package IS NULL OR units_per_package >= 1);

@@ -62,6 +62,17 @@ pub async fn bootstrap_merchandise_database(
             .map_err(|error| format!("merchandise database migrate failed: {error}"))?;
     }
 
+    // `seedOnBoot` (manifest) / `SDKWORK_DATABASE_SEED_ON_BOOT` (env) now lands here: a fresh
+    // standalone deployment initializes schema AND demo data in one boot, which is what makes
+    // "deploy and demo" work without an out-of-band `db:bootstrap`. Seeds are upserts on
+    // reserved id blocks, so a re-boot absorbs them; production can flip the env off.
+    if options.seed_on_boot {
+        orchestrator
+            .seed(&options.seed_locale, &options.seed_profile)
+            .await
+            .map_err(|error| format!("merchandise database seed failed: {error}"))?;
+    }
+
     Ok(MerchandiseDatabaseHost { pool, module })
 }
 

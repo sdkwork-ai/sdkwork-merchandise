@@ -229,38 +229,16 @@ These are known and deliberately not disguised as complete:
     carries its own currency scale, and what happens to item rows when a price list is deactivated.
     Until they are, the table is either owed an operation or is redundant, and retiring it is a
     different change from wiring it.
-- **The table-level coverage gate has a column-level blind spot, and it currently hides 47
-  columns.** Measured 2026-09-23: the baseline declares 271 columns across the 17 tables, and 47 of
-  them appear in neither a non-comment source file nor the authored contract. A table either has a
-  code path or is recorded, so a live table can carry an entire dead column set invisibly — this is
-  the same failure the table gate was written to end, one level down. The 47, grouped by the decision
-  each is waiting on:
-  - **23 are the audit columns** `created_by`/`updated_by`/`deleted_by` on `category`, `attribute`,
-    `category_attribute`, `spu`, `sku`, `price_list`, and `price_list_item`, plus
-    `attribute_value.deleted_by` and `media.deleted_by`. `IamAppContext.user_id` is available at the
-    router and the baseline constrains these columns; the gap is that no write command carries an
-    actor, so every row records no one.
-  - **5 are `locale` on the translation tables** — the localization item above, counted again here
-    because a column census sees what a table census cannot.
-  - **10 are the commercial attributes** `spu.brand_id`, `spu.model_no`, `spu.barcode`,
-    `spu.weight_gram`, `spu.volume_ml`, `spu.tax_class_code`, `sku.barcode`, `sku.weight_gram`,
-    `sku.cost_price_minor`, and `sku.inventory_policy`. The baseline's own comment calls these
-    "fixed-semantics fields … columns, not dynamic attributes, so they are queryable and
-    constrainable", and it backs two of them with unique partial indexes
-    (`uk_commerce_product_spu_tenant_barcode`, `uk_commerce_product_sku_tenant_barcode`). Nothing
-    reads or writes any of them, so the schema promises barcode uniqueness, ship weight, volume, a
-    tax class, and a cost price that the service cannot receive — and a cost price is what a margin
-    needs.
-  - **2 are `commerce_currency.display_symbol` and `display_name`**, so a price cannot be formatted
-    with the currency's own symbol without a second source of truth.
-  - **2 are presentation metadata for the variant axis**: `attribute.unit_symbol` and
-    `attribute_value.color_hex`. Without the colour a swatch cannot be rendered, which is the
-    standard presentation of a colourway.
-  - **2 are `commerce_price_list_item.price_minor` and `min_quantity`** — the quantity-break and
-    per-SKU-price item of the price-list decision above.
-  - **3 remain single columns**: `category.back_parent_id` (provenance for a copied category tree),
-    `spu_attribute.raw_value` (the unparsed parameter value, part of the `spu_attribute` item
-    above), and `price_list.customer_segment` (the B2B segment a list applies to).
+- **The column-level census is closed as of 2026-11-12: a fresh census of all 19 tables
+  finds 0 dead columns.** The 2026-09-23 census measured 47 columns with no code path; the
+  2026-11-10..12 alignment waves wired every one of them (audit actor columns via the IAM
+  context, locale columns via the translation write/read paths, the commercial attributes via
+  the create/update bodies, currency display symbols via seed + read join, unit symbols and
+  colour swatches via the value dictionary, the back-office tree via back_parent_id, the
+  price-ladder columns via the price-list-item surface, and the brand family via the new
+  tables). The gate still has the structural blind spot this bullet described — column wiring
+  is asserted by the contract tests field-by-field rather than by a standing census tool — so
+  the census number is maintained by hand in this section and re-measured each regression.
 - 🔴 **Two of those columns show why a column *presence* check is not enough, and both are the
   reason this section states the count rather than claiming the census closes the class.**
   `commerce_product_sku.version` would be judged *wired* by any presence test, because the
@@ -444,7 +422,7 @@ repository adapter did:
   authored contract, and the capability tokens — and the two design questions that were open are
   settled the way the specifications require rather than the way that was quickest: the stored
   reference is a Drive identity plus a read-model snapshot instead of a URL, and the owner is a
-  `(ownerType, ownerId)` pair verified per kind inside the write transaction instead of four nullable
+  `(ownerType, ownerId)` pair verified per kind inside the write transaction instead of five nullable
   foreign keys, which would let one row claim two owners.
 - The SKU variant axis was inert. `commerce_product_sku_attribute` had no writer,
   `variant_signature` fell back to `sku_no`, and two colourways of one product could not be

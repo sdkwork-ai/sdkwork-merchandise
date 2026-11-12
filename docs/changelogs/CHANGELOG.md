@@ -1,5 +1,34 @@
 # Merchandise Changelog
 
+## 2026-11-13 - 数据库初始化完整化（部署即用 + 演示能力）
+
+- **seed 语法错误修复**：`001_merchandise_bootstrap.sql` 品牌保留块注释丢失
+  `--` 前缀，seed 重跑必中止。
+- **品牌并入 bootstrap**（先于 SPU 消除 FK 顺序陷阱）；SPU 1500/1501 挂
+  `brand_id=2200`。
+- **course 轴补齐**：`offering` 属性/值/绑定/sku_attribute 四行，
+  SKU 1620 的签名轴不再悬空；绑定 1302 随类目 1001 移入 002。
+- **价目表 + 19 条明细 seed**（16 会员基准价 + 1 课程 + 2 阶梯档
+  `min_quantity=12`），双层价格演示可走通。
+- **演示媒体 3 条**（drive:// 占位快照）。
+- **seedOnBoot 接线**：`bootstrap_merchandise_database` 此前从不调用
+  `seed()`——现已遵守 `SDKWORK_DATABASE_SEED_ON_BOOT`；topology base.env
+  声明 `AUTO_MIGRATE=true` + `SEED_ON_BOOT=true` 并重生成 10 个 profile：
+  **部署即完成 init→migrate→seed**，生产可两键关闭。
+- **i18n 写路径修复**：`upsert_translation` 此前是死代码（locale 写脚本
+  锚点失败中止未落盘）——六个 create/update 现按 locale 写翻译行
+  （非默认 locale 时基础行文本保持存储值），五个 retrieve 接 locale 覆盖。
+- **翻译 seed 全量**：en-US 补齐 course 线、类目、服务说明属性
+  （`attribute_translation` 至 3203）；zh-CN 由基础行承载。
+- **schema.yaml 增补 `reservedSeedIdBlocks`**（14 块），seed 头部声明为真。
+- **Dockerfile 修复**：运行镜像此前仅拷贝二进制、无 `database/` 也无
+  `SDKWORK_MERCHANDISE_APP_ROOT`——容器启动即死于模块加载。现拷贝
+  `database/` 至 `/app` 并设置 APP_ROOT。
+- **SPU 规格表演示**：参数属性 1103 + 绑定 1303 + spu_attribute 1800
+  （`commerce_product_spu_attribute` 首次有数据）。
+- **验证**：`db:verify:baseline`（真实 Postgres，应用两遍）95/95；
+  `database/README.md` 重写覆盖完整初始化故事；死列普查归零。
+
 ## 2026-11-12 - 商品体系行业对齐（商业化落地收口）
 
 回归检查 2026-09-23 审计的 L1–L7 行业分层缺口后，闭环全部可落地差距。详见

@@ -19,6 +19,7 @@ coverage/
 /target/
 **/target/
 !.env.*.example
+config/host/postgres.env
 !config/host/postgres.env.example
 **/dist/
 **/.pnpm-store/

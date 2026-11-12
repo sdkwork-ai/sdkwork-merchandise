@@ -1408,14 +1408,28 @@ impl PostgresCommerceCatalogStore {
         &self,
         query: &CategoryRetrieveQuery,
     ) -> Result<Option<CategoryRecord>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
         let row = sqlx::query(RETRIEVE_CATEGORY_SQL)
-            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(tenant_id)
             .bind(parse_id("category_id", &query.category_id)?)
             .fetch_optional(&self.pool)
             .await
             .map_err(|error| store_error("failed to retrieve category", error))?;
 
-        Ok(row.as_ref().map(map_category_row))
+        match row {
+            Some(row) => {
+                let mut categories = vec![map_category_row(&row)];
+                attach_category_locale(
+                    &self.pool,
+                    tenant_id,
+                    query.locale.as_deref(),
+                    &mut categories,
+                )
+                .await?;
+                Ok(categories.pop())
+            }
+            None => Ok(None),
+        }
     }
 
     /// Creates a category and maintains the tree invariants of its parent.
@@ -1467,6 +1481,24 @@ impl PostgresCommerceCatalogStore {
 
         if let Some(parent) = parent_id {
             refresh_leaf_state(&mut transaction, tenant_id, parent).await?;
+        }
+
+        if !crate::postgres_translations::is_default_locale(command.locale.as_deref()) {
+            let locale = command.locale.as_deref().unwrap_or_default().trim();
+            crate::postgres_translations::upsert_translation(
+                &self.ids,
+                &mut transaction,
+                tenant_id,
+                organization_id,
+                crate::postgres_translations::UPSERT_CATEGORY_TRANSLATION_SQL,
+                id,
+                locale,
+                &crate::postgres_translations::TranslationField {
+                    field_name: "name",
+                    value: command.name.trim(),
+                },
+            )
+            .await?;
         }
 
         transaction
@@ -1558,9 +1590,17 @@ impl PostgresCommerceCatalogStore {
                 .transpose()?,
             None => current.back_parent_id,
         };
+        // A non-default locale carries the display text to the translation row; COALESCE
+        // keeps the base row's default-language name.
+        let locale_is_default =
+            crate::postgres_translations::is_default_locale(command.locale.as_deref());
         let row = sqlx::query(UPDATE_CATEGORY_SQL)
             .bind(back_parent_id)
-            .bind(command.name.as_deref())
+            .bind(if locale_is_default {
+                command.name.as_deref()
+            } else {
+                None
+            })
             .bind(command.sort_order)
             .bind(command.status.map(LifecycleStatus::as_storage_str))
             .bind(tenant_id)
@@ -1586,6 +1626,25 @@ impl PostgresCommerceCatalogStore {
             .await
             .map(GuardedWrite::StaleVersion);
         };
+
+        if !locale_is_default {
+            if let Some(name) = command.name.as_deref().map(str::trim) {
+                crate::postgres_translations::upsert_translation(
+                    &self.ids,
+                    &mut transaction,
+                    tenant_id,
+                    bigint_cell(&row, "organization_id"),
+                    crate::postgres_translations::UPSERT_CATEGORY_TRANSLATION_SQL,
+                    id,
+                    command.locale.as_deref().unwrap_or_default().trim(),
+                    &crate::postgres_translations::TranslationField {
+                        field_name: "name",
+                        value: name,
+                    },
+                )
+                .await?;
+            }
+        }
 
         transaction
             .commit()
@@ -1712,13 +1771,28 @@ impl PostgresCommerceCatalogStore {
         &self,
         query: &AttributeRetrieveQuery,
     ) -> Result<Option<AttributeRecord>, CommerceServiceError> {
-        sqlx::query(RETRIEVE_ATTRIBUTE_SQL)
-            .bind(parse_id("tenant_id", &query.tenant_id)?)
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        let row = sqlx::query(RETRIEVE_ATTRIBUTE_SQL)
+            .bind(tenant_id)
             .bind(parse_id("attribute_id", &query.attribute_id)?)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|error| store_error("failed to retrieve attribute", error))
-            .map(|row| row.map(|row| map_attribute_row(&row)))
+            .map_err(|error| store_error("failed to retrieve attribute", error))?;
+
+        match row {
+            Some(row) => {
+                let mut attributes = vec![map_attribute_row(&row)];
+                attach_attribute_locale(
+                    &self.pool,
+                    tenant_id,
+                    query.locale.as_deref(),
+                    &mut attributes,
+                )
+                .await?;
+                Ok(attributes.pop())
+            }
+            None => Ok(None),
+        }
     }
 
     pub async fn count_attributes(
@@ -1786,6 +1860,24 @@ impl PostgresCommerceCatalogStore {
                 .map_err(|error| store_error("failed to create attribute value", error))?;
         }
 
+        if !crate::postgres_translations::is_default_locale(command.locale.as_deref()) {
+            let locale = command.locale.as_deref().unwrap_or_default().trim();
+            crate::postgres_translations::upsert_translation(
+                &self.ids,
+                &mut transaction,
+                tenant_id,
+                organization_id,
+                crate::postgres_translations::UPSERT_ATTRIBUTE_TRANSLATION_SQL,
+                id,
+                locale,
+                &crate::postgres_translations::TranslationField {
+                    field_name: "name",
+                    value: command.name.trim(),
+                },
+            )
+            .await?;
+        }
+
         transaction
             .commit()
             .await
@@ -1830,9 +1922,13 @@ impl PostgresCommerceCatalogStore {
             }));
         }
 
+        // A non-default locale keeps the base row's default-language name and writes the
+        // command's text to the translation row.
+        let locale_is_default =
+            crate::postgres_translations::is_default_locale(command.locale.as_deref());
         let name = match command.name.as_deref() {
-            Some(name) => name.trim().to_owned(),
-            None => string_cell(&current, "name"),
+            Some(name) if locale_is_default => name.trim().to_owned(),
+            _ => string_cell(&current, "name"),
         };
         let unit_symbol = match &command.unit_symbol {
             Some(unit) => unit.as_deref().map(str::trim).map(str::to_owned),
@@ -1858,6 +1954,25 @@ impl PostgresCommerceCatalogStore {
             .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update attribute", error))?;
+
+        if !locale_is_default {
+            if let Some(name) = command.name.as_deref().map(str::trim) {
+                crate::postgres_translations::upsert_translation(
+                    &self.ids,
+                    &mut transaction,
+                    tenant_id,
+                    bigint_cell(&row, "organization_id"),
+                    crate::postgres_translations::UPSERT_ATTRIBUTE_TRANSLATION_SQL,
+                    attribute_id,
+                    command.locale.as_deref().unwrap_or_default().trim(),
+                    &crate::postgres_translations::TranslationField {
+                        field_name: "name",
+                        value: name,
+                    },
+                )
+                .await?;
+            }
+        }
 
         transaction
             .commit()
@@ -1972,6 +2087,24 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to create attribute value", error))?;
 
+        if !crate::postgres_translations::is_default_locale(command.locale.as_deref()) {
+            let locale = command.locale.as_deref().unwrap_or_default().trim();
+            crate::postgres_translations::upsert_translation(
+                &self.ids,
+                &mut transaction,
+                tenant_id,
+                organization_id,
+                crate::postgres_translations::UPSERT_ATTRIBUTE_VALUE_TRANSLATION_SQL,
+                id,
+                locale,
+                &crate::postgres_translations::TranslationField {
+                    field_name: "display_value",
+                    value: command.display_value.trim(),
+                },
+            )
+            .await?;
+        }
+
         transaction
             .commit()
             .await
@@ -2019,9 +2152,11 @@ impl PostgresCommerceCatalogStore {
             }));
         }
 
+        let locale_is_default =
+            crate::postgres_translations::is_default_locale(command.locale.as_deref());
         let display_value = match command.display_value.as_deref() {
-            Some(value) => value.trim().to_owned(),
-            None => string_cell(&current, "display_value"),
+            Some(value) if locale_is_default => value.trim().to_owned(),
+            _ => string_cell(&current, "display_value"),
         };
         let color_hex = match &command.color_hex {
             Some(color) => color.as_deref().map(str::trim).map(str::to_owned),
@@ -2053,6 +2188,25 @@ impl PostgresCommerceCatalogStore {
             .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update attribute value", error))?;
+
+        if !locale_is_default {
+            if let Some(display) = command.display_value.as_deref().map(str::trim) {
+                crate::postgres_translations::upsert_translation(
+                    &self.ids,
+                    &mut transaction,
+                    tenant_id,
+                    bigint_cell(&row, "organization_id"),
+                    crate::postgres_translations::UPSERT_ATTRIBUTE_VALUE_TRANSLATION_SQL,
+                    attribute_value_id,
+                    command.locale.as_deref().unwrap_or_default().trim(),
+                    &crate::postgres_translations::TranslationField {
+                        field_name: "display_value",
+                        value: display,
+                    },
+                )
+                .await?;
+            }
+        }
 
         transaction
             .commit()
@@ -2986,6 +3140,8 @@ impl PostgresCommerceCatalogStore {
             Some(row) => {
                 let mut spus = vec![map_spu_row(&row)];
                 attach_spu_attributes(&self.pool, tenant_id, &mut spus).await?;
+                attach_spu_locale(&self.pool, tenant_id, query.locale.as_deref(), &mut spus)
+                    .await?;
                 Ok(spus.pop())
             }
             None => Ok(None),
@@ -3006,6 +3162,12 @@ impl PostgresCommerceCatalogStore {
         let category_id = parse_id("category_id", &command.category_id)?;
         let id = self.next_id()?;
 
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| store_error("failed to open spu transaction", error))?;
+
         let row = sqlx::query(INSERT_SPU_SQL)
             .bind(id)
             .bind(tenant_id)
@@ -3023,9 +3185,73 @@ impl PostgresCommerceCatalogStore {
             .bind(command.volume_ml)
             .bind(command.tax_class_code.as_deref().map(str::trim))
             .bind(&command.actor)
-            .fetch_one(&self.pool)
+            .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to create spu", error))?;
+
+        if !crate::postgres_translations::is_default_locale(command.locale.as_deref()) {
+            let locale = command.locale.as_deref().unwrap_or_default().trim();
+            for field in [
+                ("name", command.title.as_str()),
+                ("title", command.title.as_str()),
+            ] {
+                crate::postgres_translations::upsert_translation(
+                    &self.ids,
+                    &mut transaction,
+                    tenant_id,
+                    organization_id,
+                    crate::postgres_translations::UPSERT_SPU_TRANSLATION_SQL,
+                    id,
+                    locale,
+                    &crate::postgres_translations::TranslationField {
+                        field_name: field.0,
+                        value: field.1,
+                    },
+                )
+                .await?;
+            }
+            if let Some(subtitle) = command.subtitle.as_deref().map(str::trim) {
+                if !subtitle.is_empty() {
+                    crate::postgres_translations::upsert_translation(
+                        &self.ids,
+                        &mut transaction,
+                        tenant_id,
+                        organization_id,
+                        crate::postgres_translations::UPSERT_SPU_TRANSLATION_SQL,
+                        id,
+                        locale,
+                        &crate::postgres_translations::TranslationField {
+                            field_name: "subtitle",
+                            value: subtitle,
+                        },
+                    )
+                    .await?;
+                }
+            }
+            if let Some(description) = command.description.as_deref().map(str::trim) {
+                if !description.is_empty() {
+                    crate::postgres_translations::upsert_translation(
+                        &self.ids,
+                        &mut transaction,
+                        tenant_id,
+                        organization_id,
+                        crate::postgres_translations::UPSERT_SPU_TRANSLATION_SQL,
+                        id,
+                        locale,
+                        &crate::postgres_translations::TranslationField {
+                            field_name: "description",
+                            value: description,
+                        },
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit spu creation", error))?;
 
         Ok(map_spu_row(&row))
     }
@@ -3398,6 +3624,7 @@ impl PostgresCommerceCatalogStore {
         let mut skus = vec![map_sku_row(row)?];
         attach_sku_axes(&self.pool, tenant_id, &mut skus).await?;
         fill_currency_symbols(&self.pool, &mut skus).await?;
+        attach_sku_locale(&self.pool, tenant_id, query.locale.as_deref(), &mut skus).await?;
         let sku = skus.swap_remove(0);
         Ok(Some(sku))
     }
@@ -3484,6 +3711,29 @@ impl PostgresCommerceCatalogStore {
             &axes,
         )
         .await?;
+
+        if !crate::postgres_translations::is_default_locale(command.locale.as_deref()) {
+            let locale = command.locale.as_deref().unwrap_or_default().trim();
+            for field in [
+                ("name", command.name.as_str()),
+                ("title", command.title.as_str()),
+            ] {
+                crate::postgres_translations::upsert_translation(
+                    &self.ids,
+                    &mut transaction,
+                    tenant_id,
+                    organization_id,
+                    crate::postgres_translations::UPSERT_SKU_TRANSLATION_SQL,
+                    id,
+                    locale,
+                    &crate::postgres_translations::TranslationField {
+                        field_name: field.0,
+                        value: field.1,
+                    },
+                )
+                .await?;
+            }
+        }
 
         transaction
             .commit()
@@ -3719,9 +3969,21 @@ impl PostgresCommerceCatalogStore {
 
         // `sales_status` is derived, never supplied: the baseline only allows a sellable row whose own
         // status is `active`, and the sellable index keys on this column.
+        // A non-default locale writes the display text to the translation row; COALESCE keeps
+        // the base row's default-language name and title.
+        let locale_is_default =
+            crate::postgres_translations::is_default_locale(command.locale.as_deref());
         let row = sqlx::query(UPDATE_SKU_SQL)
-            .bind(command.name.as_deref())
-            .bind(command.title.as_deref())
+            .bind(if locale_is_default {
+                command.name.as_deref()
+            } else {
+                None
+            })
+            .bind(if locale_is_default {
+                command.title.as_deref()
+            } else {
+                None
+            })
             .bind(sale_price_minor)
             .bind(list_price_minor)
             .bind(cost_price_minor)
@@ -3765,6 +4027,34 @@ impl PostgresCommerceCatalogStore {
             .await
             .map(GuardedWrite::StaleVersion);
         };
+
+        if !crate::postgres_translations::is_default_locale(command.locale.as_deref()) {
+            let locale = command.locale.as_deref().unwrap_or_default().trim();
+            let organization_id = bigint_cell(&row, "organization_id");
+            for field in [
+                ("name", command.name.as_deref().map(str::trim)),
+                ("title", command.title.as_deref().map(str::trim)),
+            ] {
+                if let Some(text) = field.1 {
+                    if !text.is_empty() {
+                        crate::postgres_translations::upsert_translation(
+                            &self.ids,
+                            &mut transaction,
+                            tenant_id,
+                            organization_id,
+                            crate::postgres_translations::UPSERT_SKU_TRANSLATION_SQL,
+                            id,
+                            locale,
+                            &crate::postgres_translations::TranslationField {
+                                field_name: field.0,
+                                value: text,
+                            },
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
 
         transaction
             .commit()
@@ -3863,7 +4153,7 @@ impl PostgresCommerceCatalogStore {
     /// Attaches one media resource to one owner.
     ///
     /// The owner is verified before the row is written, in the same transaction. There is no foreign
-    /// key to do it — `owner_id` points at one of four tables — so this is the only place the
+    /// key to do it — `owner_id` points at one of five tables — so this is the only place the
     /// constraint exists at all; without it a typo in `ownerId` would silently attach a product's
     /// main image to a product that does not exist.
     ///
@@ -4064,13 +4354,23 @@ impl PostgresCommerceCatalogStore {
         &self,
         query: &BrandRetrieveQuery,
     ) -> Result<Option<BrandRecord>, CommerceServiceError> {
-        sqlx::query(RETRIEVE_BRAND_SQL)
-            .bind(parse_id("tenant_id", &query.tenant_id)?)
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        let row = sqlx::query(RETRIEVE_BRAND_SQL)
+            .bind(tenant_id)
             .bind(parse_id("brand_id", &query.brand_id)?)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|error| store_error("failed to retrieve brand", error))
-            .map(|row| row.map(|row| map_brand_row(&row)))
+            .map_err(|error| store_error("failed to retrieve brand", error))?;
+
+        match row {
+            Some(row) => {
+                let mut brands = vec![map_brand_row(&row)];
+                attach_brand_locale(&self.pool, tenant_id, query.locale.as_deref(), &mut brands)
+                    .await?;
+                Ok(brands.pop())
+            }
+            None => Ok(None),
+        }
     }
 
     /// Creates one brand.
@@ -4086,6 +4386,12 @@ impl PostgresCommerceCatalogStore {
         let organization_id = parse_id("organization_id", &command.organization_id)?;
         let id = self.next_id()?;
 
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| store_error("failed to open brand transaction", error))?;
+
         let row = sqlx::query(INSERT_BRAND_SQL)
             .bind(id)
             .bind(tenant_id)
@@ -4095,9 +4401,50 @@ impl PostgresCommerceCatalogStore {
             .bind(command.description.as_deref().map(str::trim))
             .bind(command.sort_order)
             .bind(&command.actor)
-            .fetch_one(&self.pool)
+            .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to create brand", error))?;
+
+        if !crate::postgres_translations::is_default_locale(command.locale.as_deref()) {
+            let locale = command.locale.as_deref().unwrap_or_default().trim();
+            crate::postgres_translations::upsert_translation(
+                &self.ids,
+                &mut transaction,
+                tenant_id,
+                organization_id,
+                crate::postgres_translations::UPSERT_BRAND_TRANSLATION_SQL,
+                id,
+                locale,
+                &crate::postgres_translations::TranslationField {
+                    field_name: "name",
+                    value: command.name.trim(),
+                },
+            )
+            .await?;
+            if let Some(description) = command.description.as_deref().map(str::trim) {
+                if !description.is_empty() {
+                    crate::postgres_translations::upsert_translation(
+                        &self.ids,
+                        &mut transaction,
+                        tenant_id,
+                        organization_id,
+                        crate::postgres_translations::UPSERT_BRAND_TRANSLATION_SQL,
+                        id,
+                        locale,
+                        &crate::postgres_translations::TranslationField {
+                            field_name: "description",
+                            value: description,
+                        },
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit brand creation", error))?;
 
         Ok(map_brand_row(&row))
     }
@@ -4133,13 +4480,17 @@ impl PostgresCommerceCatalogStore {
             }));
         }
 
+        let locale_is_default =
+            crate::postgres_translations::is_default_locale(command.locale.as_deref());
         let name = match command.name.as_deref() {
-            Some(name) => name.trim().to_owned(),
-            None => string_cell(&current, "name"),
+            Some(name) if locale_is_default => name.trim().to_owned(),
+            _ => string_cell(&current, "name"),
         };
         let description = match &command.description {
-            Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
-            None => optional_string_cell(&current, "description"),
+            Some(decided) if locale_is_default => {
+                decided.as_deref().map(str::trim).map(str::to_owned)
+            }
+            _ => optional_string_cell(&current, "description"),
         };
         let sort_order = command
             .sort_order
@@ -4161,6 +4512,49 @@ impl PostgresCommerceCatalogStore {
             .fetch_one(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update brand", error))?;
+
+        if !locale_is_default {
+            let locale = command.locale.as_deref().unwrap_or_default().trim();
+            let organization_id = bigint_cell(&row, "organization_id");
+            if let Some(name) = command.name.as_deref().map(str::trim) {
+                crate::postgres_translations::upsert_translation(
+                    &self.ids,
+                    &mut transaction,
+                    tenant_id,
+                    organization_id,
+                    crate::postgres_translations::UPSERT_BRAND_TRANSLATION_SQL,
+                    brand_id,
+                    locale,
+                    &crate::postgres_translations::TranslationField {
+                        field_name: "name",
+                        value: name,
+                    },
+                )
+                .await?;
+            }
+            if let Some(Some(text)) = command
+                .description
+                .as_ref()
+                .map(|d| d.as_deref().map(str::trim))
+            {
+                if !text.is_empty() {
+                    crate::postgres_translations::upsert_translation(
+                        &self.ids,
+                        &mut transaction,
+                        tenant_id,
+                        organization_id,
+                        crate::postgres_translations::UPSERT_BRAND_TRANSLATION_SQL,
+                        brand_id,
+                        locale,
+                        &crate::postgres_translations::TranslationField {
+                            field_name: "description",
+                            value: text,
+                        },
+                    )
+                    .await?;
+                }
+            }
+        }
 
         transaction
             .commit()
@@ -4954,16 +5348,15 @@ async fn lock_live_row(
 /// Refuses an attachment whose owner does not exist.
 ///
 /// `commerce_product_media.owner_id` carries no foreign key: PostgreSQL cannot express "this BIGINT
-/// points at one of four tables", and four nullable FK columns would let one row claim two owners
+/// points at one of five tables", and five nullable FK columns would let one row claim two owners
 /// and force every read to guess which one is live. Verifying the owner against the table its
 /// `owner_type` names is therefore the only place this constraint exists.
 /// Refuses an attachment whose owner does not exist.
 ///
 /// `commerce_product_media.owner_id` carries no foreign key: PostgreSQL cannot express "this BIGINT
-/// points at one of four tables", and four nullable FK columns would let one row claim two owners
+/// points at one of five tables", and five nullable FK columns would let one row claim two owners
 /// and force every read to guess which one is live. Verifying the owner against the table its
 /// `owner_type` names is therefore the only place this constraint exists.
-
 async fn ensure_media_owner(
     transaction: &mut Transaction<'_, Postgres>,
     tenant_id: i64,

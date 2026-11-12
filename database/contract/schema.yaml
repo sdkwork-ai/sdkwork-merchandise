@@ -60,3 +60,22 @@ tables:
   - name: commerce_price_list_item
     lifecycle_status: active
     owner: merchandise-platform
+
+# Reserved seed id blocks (DATABASE_SPEC section 6.4): deterministic ids far
+# below any snowflake allocation so runtime ids can never collide. Declared here
+# because the seed scripts cite this file as the blocks' authority.
+reservedSeedIdBlocks:
+  commerce_currency:                        1..99
+  commerce_product_category:                1000..1099
+  commerce_product_attribute:               1100..1199
+  commerce_product_attribute_value:         1200..1299
+  commerce_product_category_attribute:      1300..1399
+  commerce_product_spu:                     1500..1599
+  commerce_product_sku:                     1600..1699
+  commerce_product_sku_attribute:           1700..1799
+  commerce_product_spu_attribute:           1800..1899
+  commerce_price_list:                      2000..2099
+  commerce_price_list_item:                 2100..2199
+  commerce_product_brand:                   2200..2299
+  commerce_product_media:                   2400..2499
+  '*_translation':                          3000..3999

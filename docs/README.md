@@ -19,5 +19,5 @@ Standards: `../sdkwork-specs/DOCUMENTATION_SPEC.md`
 - [Developer guides](guides/developer/README.md)
 - [Operator guides](guides/operator/README.md)
 - [Integrator guides](guides/integrator/README.md)
-- [Engineering reviews](engineering/reviews/README.md)
 - [Documentation index](INDEX.yaml)
+- [Engineering reviews](engineering/reviews/README.md) — including [REVIEW-20261112 merchandise industry alignment](engineering/reviews/REVIEW-20261112-merchandise-industry-alignment.md)

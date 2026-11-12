@@ -16,6 +16,8 @@ pub struct CategoryListQuery {
 pub struct CategoryRetrieveQuery {
     pub tenant_id: String,
     pub category_id: String,
+    /// The locale the text fields are rendered in; missing translations fall back to the base row.
+    pub locale: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,6 +48,7 @@ pub struct BrandListQuery {
 pub struct BrandRetrieveQuery {
     pub tenant_id: String,
     pub brand_id: String,
+    pub locale: Option<String>,
 }
 
 /// Reads one attribute.
@@ -53,6 +56,7 @@ pub struct BrandRetrieveQuery {
 pub struct AttributeRetrieveQuery {
     pub tenant_id: String,
     pub attribute_id: String,
+    pub locale: Option<String>,
 }
 
 /// Lists one attribute's dictionary values.
@@ -159,6 +163,7 @@ pub struct ProductSpuListQuery {
 pub struct ProductSpuRetrieveQuery {
     pub tenant_id: String,
     pub spu_id: String,
+    pub locale: Option<String>,
 }
 
 /// Lists SKUs.
@@ -184,6 +189,7 @@ pub struct ProductSkuListQuery {
 pub struct ProductSkuRetrieveQuery {
     pub tenant_id: String,
     pub sku_id: String,
+    pub locale: Option<String>,
 }
 
 /// Lists media attachments.
@@ -253,11 +259,11 @@ macro_rules! impl_query_new {
 }
 
 impl_query_new!(CategoryListQuery, required: [tenant_id], optional: [organization_id, parent_id, status, locale], page: [page, page_size]);
-impl_query_new!(CategoryRetrieveQuery, required: [tenant_id, category_id], optional: []);
+impl_query_new!(CategoryRetrieveQuery, required: [tenant_id, category_id], optional: [locale]);
 impl_query_new!(AttributeListQuery, required: [tenant_id], optional: [organization_id, status, locale], page: [page, page_size]);
 impl_query_new!(BrandListQuery, required: [tenant_id], optional: [organization_id, status, locale], page: [page, page_size]);
-impl_query_new!(BrandRetrieveQuery, required: [tenant_id, brand_id], optional: []);
-impl_query_new!(AttributeRetrieveQuery, required: [tenant_id, attribute_id], optional: []);
+impl_query_new!(BrandRetrieveQuery, required: [tenant_id, brand_id], optional: [locale]);
+impl_query_new!(AttributeRetrieveQuery, required: [tenant_id, attribute_id], optional: [locale]);
 impl_query_new!(PriceListRetrieveQuery, required: [tenant_id, price_list_id], optional: []);
 impl_query_new!(AttributeValueListQuery, required: [tenant_id, attribute_id], optional: [organization_id, status, locale], page: [page, page_size]);
 impl_query_new!(ProductAttributesRetrieveQuery, required: [tenant_id, spu_id], optional: []);
@@ -265,9 +271,9 @@ impl_query_new!(PriceListListQuery, required: [tenant_id], optional: [organizati
 impl_query_new!(PriceListItemListQuery, required: [tenant_id, price_list_id], optional: [organization_id, sku_id, status], page: [page, page_size]);
 impl_query_new!(CategoryAttributeListQuery, required: [tenant_id], optional: [organization_id, category_id, attribute_id, status], page: [page, page_size]);
 impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, q, category_id, brand_id, product_type, status, sort, locale], page: [page, page_size]);
-impl_query_new!(ProductSpuRetrieveQuery, required: [tenant_id, spu_id], optional: []);
+impl_query_new!(ProductSpuRetrieveQuery, required: [tenant_id, spu_id], optional: [locale]);
 impl_query_new!(ProductSkuListQuery, required: [tenant_id], optional: [organization_id, spu_id, attribute_value_id, status, locale], page: [page, page_size]);
-impl_query_new!(ProductSkuRetrieveQuery, required: [tenant_id, sku_id], optional: []);
+impl_query_new!(ProductSkuRetrieveQuery, required: [tenant_id, sku_id], optional: [locale]);
 impl_query_new!(MediaListQuery, required: [tenant_id], optional: [organization_id, owner_type, owner_id, media_role, status], page: [page, page_size]);
 
 fn required_text(field_name: &str, value: &str) -> Result<String, CommerceServiceError> {

@@ -20,7 +20,9 @@ INSERT INTO commerce_product_spu_translation
     (id, tenant_id, organization_id, spu_id, locale, field_name, value)
 VALUES
     (3000, 100001, 0, 1500, 'en-US', 'name', 'Membership Catalog'),
-    (3001, 100001, 0, 1500, 'en-US', 'title', 'Membership Catalog')
+    (3001, 100001, 0, 1500, 'en-US', 'title', 'Membership Catalog'),
+    (3002, 100001, 0, 1501, 'en-US', 'name', 'Course Catalog'),
+    (3003, 100001, 0, 1501, 'en-US', 'title', 'Course Catalog')
 ON CONFLICT (id) DO UPDATE SET
     spu_id = EXCLUDED.spu_id,
     locale = EXCLUDED.locale,
@@ -46,7 +48,8 @@ VALUES
     (3124, 100001, 0, 1612, 'en-US', 'name', 'Basic Single'),       (3125, 100001, 0, 1612, 'en-US', 'title', 'Basic Single'),
     (3126, 100001, 0, 1613, 'en-US', 'name', 'Standard Single'),    (3127, 100001, 0, 1613, 'en-US', 'title', 'Standard Single'),
     (3128, 100001, 0, 1614, 'en-US', 'name', 'Premium Single'),     (3129, 100001, 0, 1614, 'en-US', 'title', 'Premium Single'),
-    (3130, 100001, 0, 1615, 'en-US', 'name', 'Super Single'),       (3131, 100001, 0, 1615, 'en-US', 'title', 'Super Single')
+    (3130, 100001, 0, 1615, 'en-US', 'name', 'Super Single'),       (3131, 100001, 0, 1615, 'en-US', 'title', 'Super Single'),
+    (3132, 100001, 0, 1620, 'en-US', 'name', 'AI Productivity Column'), (3133, 100001, 0, 1620, 'en-US', 'title', 'AI Productivity Column')
 ON CONFLICT (id) DO UPDATE SET
     sku_id = EXCLUDED.sku_id,
     locale = EXCLUDED.locale,
@@ -58,7 +61,9 @@ INSERT INTO commerce_product_attribute_translation
     (id, tenant_id, organization_id, attribute_id, locale, field_name, value)
 VALUES
     (3200, 100001, 0, 1100, 'en-US', 'name', 'Tier'),
-    (3201, 100001, 0, 1101, 'en-US', 'name', 'Billing Period')
+    (3201, 100001, 0, 1101, 'en-US', 'name', 'Billing Period'),
+    (3202, 100001, 0, 1102, 'en-US', 'name', 'Offering'),
+    (3203, 100001, 0, 1103, 'en-US', 'name', 'Service Notes')
 ON CONFLICT (id) DO UPDATE SET
     attribute_id = EXCLUDED.attribute_id,
     locale = EXCLUDED.locale,
@@ -76,9 +81,40 @@ VALUES
     (3304, 100001, 0, 1210, 'en-US', 'display_value', 'Annual'),
     (3305, 100001, 0, 1211, 'en-US', 'display_value', 'Quarterly'),
     (3306, 100001, 0, 1212, 'en-US', 'display_value', 'Monthly'),
-    (3307, 100001, 0, 1213, 'en-US', 'display_value', 'Single Month')
+    (3307, 100001, 0, 1213, 'en-US', 'display_value', 'Single Month'),
+    (3308, 100001, 0, 1214, 'en-US', 'display_value', 'AI Productivity Column')
 ON CONFLICT (id) DO UPDATE SET
     attribute_value_id = EXCLUDED.attribute_value_id,
+    locale = EXCLUDED.locale,
+    field_name = EXCLUDED.field_name,
+    value = EXCLUDED.value,
+    updated_at = NOW();
+
+
+INSERT INTO commerce_product_brand_translation
+    (id, tenant_id, organization_id, brand_id, locale, field_name, value)
+VALUES
+    (3400, 100001, 0, 2200, 'en-US', 'name', 'SDKWork Official'),
+    (3401, 100001, 0, 2200, 'en-US', 'description', 'The SDKWork platform first-party brand'),
+    (3402, 100001, 0, 2201, 'en-US', 'name', 'Ecosystem Partner'),
+    (3403, 100001, 0, 2201, 'en-US', 'description', 'SDKWork certified ecosystem partner brands')
+ON CONFLICT (id) DO UPDATE SET
+    brand_id = EXCLUDED.brand_id,
+    locale = EXCLUDED.locale,
+    field_name = EXCLUDED.field_name,
+    value = EXCLUDED.value,
+    updated_at = NOW();
+
+
+INSERT INTO commerce_product_category_translation
+    (id, tenant_id, organization_id, category_id, locale, field_name, value)
+VALUES
+    (3500, 100001, 0, 1000, 'en-US', 'name', 'Membership'),
+    (3501, 100001, 0, 1000, 'en-US', 'description', 'Membership plans for the SDKWork platform'),
+    (3502, 100001, 0, 1001, 'en-US', 'name', 'Courses'),
+    (3503, 100001, 0, 1001, 'en-US', 'description', 'Digital courses on the SDKWork platform')
+ON CONFLICT (id) DO UPDATE SET
+    category_id = EXCLUDED.category_id,
     locale = EXCLUDED.locale,
     field_name = EXCLUDED.field_name,
     value = EXCLUDED.value,

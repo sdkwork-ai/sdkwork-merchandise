@@ -53,7 +53,7 @@ use super::{
     CreateAttributeValueBody, CreateBrandBody, CreateCategoryAttributeBody, CreateCategoryBody,
     CreateMediaBody, CreatePriceListBody, CreatePriceListItemBody, CreateSkuBody, CreateSpuBody,
     MediaQueryParams, PriceListItemQueryParams, PriceListQueryParams, ProductListQueryParams,
-    ReplaceProductAttributesBody, SkuListQueryParams, UpdateAttributeBody,
+    ReplaceProductAttributesBody, RetrieveQueryParams, SkuListQueryParams, UpdateAttributeBody,
     UpdateAttributeValueBody, UpdateBrandBody, UpdateCategoryAttributeBody, UpdateCategoryBody,
     UpdateMediaBody, UpdatePriceListBody, UpdatePriceListItemBody, UpdateSkuBody, UpdateSpuBody,
 };
@@ -447,12 +447,17 @@ async fn backend_retrieve_product(
     State(state): State<CatalogState>,
     runtime_context: Option<Extension<IamAppContext>>,
     Path(product_id): Path<String>,
+    Query(params): Query<RetrieveQueryParams>,
 ) -> Response {
     let subject = match app_runtime_subject_from_extension(runtime_context) {
         Ok(subject) => subject,
         Err(message) => return unauthorized_response(message),
     };
-    let query = match ProductSpuRetrieveQuery::new(&subject.tenant_id, &product_id) {
+    let query = match ProductSpuRetrieveQuery::new(
+        &subject.tenant_id,
+        &product_id,
+        params.locale.as_deref(),
+    ) {
         Ok(query) => query,
         Err(error) => return validation_response(error.message()),
     };
@@ -1560,12 +1565,17 @@ async fn backend_retrieve_category(
     State(state): State<CatalogState>,
     runtime_context: Option<Extension<IamAppContext>>,
     Path(category_id): Path<String>,
+    Query(params): Query<RetrieveQueryParams>,
 ) -> Response {
     let subject = match app_runtime_subject_from_extension(runtime_context) {
         Ok(subject) => subject,
         Err(message) => return unauthorized_response(message),
     };
-    let query = match CategoryRetrieveQuery::new(&subject.tenant_id, &category_id) {
+    let query = match CategoryRetrieveQuery::new(
+        &subject.tenant_id,
+        &category_id,
+        params.locale.as_deref(),
+    ) {
         Ok(query) => query,
         Err(error) => return validation_response(error.message()),
     };
@@ -1585,15 +1595,17 @@ async fn backend_retrieve_sku(
     State(state): State<CatalogState>,
     runtime_context: Option<Extension<IamAppContext>>,
     Path(sku_id): Path<String>,
+    Query(params): Query<RetrieveQueryParams>,
 ) -> Response {
     let subject = match app_runtime_subject_from_extension(runtime_context) {
         Ok(subject) => subject,
         Err(message) => return unauthorized_response(message),
     };
-    let query = match ProductSkuRetrieveQuery::new(&subject.tenant_id, &sku_id) {
-        Ok(query) => query,
-        Err(error) => return validation_response(error.message()),
-    };
+    let query =
+        match ProductSkuRetrieveQuery::new(&subject.tenant_id, &sku_id, params.locale.as_deref()) {
+            Ok(query) => query,
+            Err(error) => return validation_response(error.message()),
+        };
     match state.store.retrieve_sku(query).await {
         Ok(Some(data)) => {
             let version = data.version;
@@ -1608,12 +1620,17 @@ async fn backend_retrieve_attribute(
     State(state): State<CatalogState>,
     runtime_context: Option<Extension<IamAppContext>>,
     Path(attribute_id): Path<String>,
+    Query(params): Query<RetrieveQueryParams>,
 ) -> Response {
     let subject = match app_runtime_subject_from_extension(runtime_context) {
         Ok(subject) => subject,
         Err(message) => return unauthorized_response(message),
     };
-    let query = match AttributeRetrieveQuery::new(&subject.tenant_id, &attribute_id) {
+    let query = match AttributeRetrieveQuery::new(
+        &subject.tenant_id,
+        &attribute_id,
+        params.locale.as_deref(),
+    ) {
         Ok(query) => query,
         Err(error) => return validation_response(error.message()),
     };
@@ -1685,15 +1702,17 @@ async fn backend_retrieve_brand(
     State(state): State<CatalogState>,
     runtime_context: Option<Extension<IamAppContext>>,
     Path(brand_id): Path<String>,
+    Query(params): Query<RetrieveQueryParams>,
 ) -> Response {
     let subject = match app_runtime_subject_from_extension(runtime_context) {
         Ok(subject) => subject,
         Err(message) => return unauthorized_response(message),
     };
-    let query = match BrandRetrieveQuery::new(&subject.tenant_id, &brand_id) {
-        Ok(query) => query,
-        Err(error) => return validation_response(error.message()),
-    };
+    let query =
+        match BrandRetrieveQuery::new(&subject.tenant_id, &brand_id, params.locale.as_deref()) {
+            Ok(query) => query,
+            Err(error) => return validation_response(error.message()),
+        };
     match state.store.retrieve_brand(query).await {
         Ok(Some(data)) => {
             let version = data.version;

@@ -730,6 +730,15 @@
               "type": "string"
             },
             "description": "The category to read. A missing or soft-deleted category answers 404."
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row."
           }
         ],
         "security": [
@@ -1180,6 +1189,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row."
           }
         ],
         "responses": {
@@ -2612,6 +2630,15 @@
               "type": "string"
             },
             "description": "The SKU to read, with its sales axes resolved. A missing or soft-deleted SKU answers 404."
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row."
           }
         ],
         "security": [
@@ -5032,6 +5059,15 @@
               "type": "string"
             },
             "description": "The attribute to read. A missing or soft-deleted attribute answers 404."
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row."
           }
         ],
         "security": [
@@ -6895,6 +6931,15 @@
               "type": "string"
             },
             "description": "The brand to read. A missing or soft-deleted brand answers 404."
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row."
           }
         ],
         "security": [

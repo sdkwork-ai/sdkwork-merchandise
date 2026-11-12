@@ -42,7 +42,7 @@ pub(crate) fn is_default_locale(locale: Option<&str>) -> bool {
 
 macro_rules! upsert_translation_statement {
     ($const_name:ident, $table:literal, $parent_column:literal) => {
-        const $const_name: &str = concat!(
+        pub(crate) const $const_name: &str = concat!(
             "INSERT INTO ",
             $table,
             " (id, tenant_id, organization_id, ",
@@ -95,6 +95,11 @@ pub(crate) struct TranslationField<'a> {
 }
 
 /// Writes one translation row (or updates it) inside a write transaction.
+///
+/// The statement, parent, locale, and field ride as separate arguments because
+/// every caller owns one fixed statement constant; bundling them would only
+/// move the same count one struct over.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn upsert_translation(
     ids: &Arc<dyn IdGenerator>,
     transaction: &mut Transaction<'_, Postgres>,
@@ -121,6 +126,10 @@ pub(crate) async fn upsert_translation(
 
 /// One translation row read back for a page of parents.
 pub(crate) struct LocaleOverride {
+    /// Carried for the GROUP BY that batches one page's overrides; the grouped
+    /// map keys on the parent id, so the field itself stays write-only until a
+    /// read model needs it inline.
+    #[allow(dead_code)]
     pub parent_id: i64,
     pub field_name: String,
     pub value: String,
@@ -208,10 +217,10 @@ pub(crate) async fn load_locale_overrides(
 }
 
 /// Groups overrides for one parent id into `(field_name, value)` pairs.
-pub(crate) fn overrides_for<'a>(
-    grouped: &'a HashMap<i64, Vec<LocaleOverride>>,
+pub(crate) fn overrides_for(
+    grouped: &HashMap<i64, Vec<LocaleOverride>>,
     parent_id: i64,
-) -> impl Iterator<Item = (&'a str, &'a str)> {
+) -> impl Iterator<Item = (&str, &str)> {
     grouped
         .get(&parent_id)
         .into_iter()

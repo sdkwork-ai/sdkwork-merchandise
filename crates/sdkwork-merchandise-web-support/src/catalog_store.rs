@@ -67,6 +67,13 @@ pub struct CategoryQueryParams {
     pub page_size: Option<i64>,
 }
 
+/// Query parameters for a single-resource retrieve.
+#[derive(Debug, Deserialize)]
+pub struct RetrieveQueryParams {
+    /// The locale the text fields are rendered in; missing translations fall back to the base row.
+    pub locale: Option<String>,
+}
+
 /// Query parameters for the brand collection.
 #[derive(Debug, Deserialize)]
 pub struct BrandQueryParams {

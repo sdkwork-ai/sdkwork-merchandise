@@ -31,7 +31,7 @@ from psycopg import errors as pg_errors
 DSN = "host=127.0.0.1 port=5432 user=sdkwork_ai_dev password=sdkworkdev123 dbname=sdkwork_ai_dev"
 SCHEMA = "merch_baseline_check"
 
-TABLE_COUNT_EXPECTED = 17
+TABLE_COUNT_EXPECTED = 19
 
 results: list[tuple[bool, str, str]] = []
 
@@ -171,17 +171,24 @@ def verify_seed_bootstrap(conn, ddl: str, files: list[pathlib.Path]) -> None:
 
     expected_rows = {
         "commerce_currency": 9,
-        "commerce_product_category": 1,
-        "commerce_product_attribute": 2,
-        "commerce_product_attribute_value": 8,
-        "commerce_product_category_attribute": 2,
-        "commerce_product_spu": 1,
-        "commerce_product_sku": 16,
-        "commerce_product_sku_attribute": 32,
-        "commerce_product_spu_translation": 2,
-        "commerce_product_sku_translation": 32,
-        "commerce_product_attribute_translation": 2,
-        "commerce_product_attribute_value_translation": 8,
+        "commerce_product_category": 2,
+        "commerce_product_attribute": 4,
+        "commerce_product_attribute_value": 9,
+        "commerce_product_category_attribute": 4,
+        "commerce_product_spu": 2,
+        "commerce_product_sku": 17,
+        "commerce_product_sku_attribute": 33,
+        "commerce_product_spu_attribute": 1,
+        "commerce_product_brand": 2,
+        "commerce_product_brand_translation": 4,
+        "commerce_product_category_translation": 4,
+        "commerce_price_list": 1,
+        "commerce_price_list_item": 19,
+        "commerce_product_media": 3,
+        "commerce_product_spu_translation": 4,
+        "commerce_product_sku_translation": 34,
+        "commerce_product_attribute_translation": 4,
+        "commerce_product_attribute_value_translation": 9,
     }
     for table, want in expected_rows.items():
         got = fetch_one(conn, f"SELECT COUNT(*) FROM {table}")
@@ -241,13 +248,13 @@ def verify_seed_bootstrap(conn, ddl: str, files: list[pathlib.Path]) -> None:
     else:
         mismatched = [(no, stored, computed) for no, stored, computed in rows if stored != computed]
         check(
-            len(rows) == 16 and not mismatched,
+            len(rows) == 17 and not mismatched,
             "every seeded variant_signature matches its sales-axis rows",
             str(mismatched[:3]),
         )
         check(
-            len({computed for _, _, computed in rows}) == 16,
-            "all 16 axis combinations are distinct (no collapsed SKU)",
+            len({computed for _, _, computed in rows}) == 17,
+            "all 17 axis combinations are distinct (no collapsed SKU)",
         )
 
     # The two axes are declared `sales` for the category, which is what makes
@@ -262,8 +269,8 @@ def verify_seed_bootstrap(conn, ddl: str, files: list[pathlib.Path]) -> None:
         """,
     )
     check(
-        sales_axes == (["period", "tier"],),
-        "category declares period+tier as its sales axes",
+        sales_axes == (["offering", "period", "tier"],),
+        "categories declare offering+period+tier as their sales axes",
         str(sales_axes),
     )
 
