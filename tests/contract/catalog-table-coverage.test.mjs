@@ -160,28 +160,7 @@ const baselineTables = [...baseline.matchAll(/CREATE TABLE IF NOT EXISTS ([a-z_]
  *     may be redundant next to `commerce_product_sku.sale_price_minor`, and the two answers have
  *     different consequences for the SKU write model.
  */
-const DECLARED_WITHOUT_A_CODE_PATH = new Map([
-  [
-    'commerce_product_category_translation',
-    'Localized category names have no write path, read model, or operation; the locale set is recorded in the seed manifest and nothing consumes it.',
-  ],
-  [
-    'commerce_product_attribute_translation',
-    'Localized attribute names have no write path, read model, or operation; the create command writes the default locale onto the base row only.',
-  ],
-  [
-    'commerce_product_attribute_value_translation',
-    'Localized dictionary values have no write path, read model, or operation; display_value on the base row is the only locale published.',
-  ],
-  [
-    'commerce_product_spu_translation',
-    'Localized product titles and descriptions have no write path, read model, or operation; the SPU create body accepts one title for the default locale.',
-  ],
-  [
-    'commerce_product_sku_translation',
-    'Localized SKU names have no write path, read model, or operation; the SKU create body accepts one name and one title for the default locale.',
-  ],
-]);
+const DECLARED_WITHOUT_A_CODE_PATH = new Map([]);
 
 const wired = baselineTables.filter((table) => source.includes(table));
 const recorded = [...DECLARED_WITHOUT_A_CODE_PATH.keys()];
@@ -233,7 +212,7 @@ test('the declared-gap list is exactly the size it says it is', () => {
   // (`products.attributes.update`), which is the direction the gate expects: the list shrinks.
   assert.equal(
     DECLARED_WITHOUT_A_CODE_PATH.size,
-    5,
+    0,
     'the declared-gap list changed size; re-confirm each entry is still a gap, then update this count deliberately',
   );
 });

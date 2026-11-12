@@ -18,7 +18,7 @@ Shop backend authority: sdkwork-shop-backend-api
         |  mounts sdkwork-api-merchandise-assembly in the same origin
         v
 sdkwork-routes-merchandise-backend-api
-        |  27 routes under /backend/v3/api/catalog/*
+        |  47 operations across 23 paths under /backend/v3/api/catalog/*
         v
 sdkwork-merchandise-web-support
         |  HTTP DTO, response envelope, catalog store port and its adapters
@@ -166,10 +166,10 @@ These are known and deliberately not disguised as complete:
   resource. Both stay declared: they are the specs-owned shared set (`sdkwork-specs`
   `tools/lib/openapi-envelope-schemas.mjs`), other repositories still `$ref` them, and the migration
   tool emits them, so deleting them locally would fight the library rather than remove dead code.
-- **`commerce_price_list_item` has no code path at all.** Removing the dead reader left the table
-  declared in the baseline with its CHECK constraints and foreign keys, and nothing in
-  `sdkwork-merchandise` reads or writes it. Either a price-list-item operation is owed, or the table
-  should be retired; the two are different decisions and neither is made here.
+- *(closed 2026-11-12)* `commerce_price_list_item` is wired end to end: the `price_list_items`
+  collection carries the ladder step (`min_quantity`), inherits the list
+  currency through the composite foreign key, and the four price decisions were made — see
+  [REVIEW-20261112](../../engineering/reviews/REVIEW-20261112-merchandise-industry-alignment.md) §1.
 - **`tenantId` and `organizationId` are published unevenly.** `PriceListResource` and
   `CategoryAttributeResource` expose them; `Category`, `Product`, and `Sku` do not. Both are always
   the caller's own scope, so the values are not a disclosure, but a client cannot tell from the
@@ -208,14 +208,15 @@ These are known and deliberately not disguised as complete:
   non-comment source file reaches and tables recorded in its `DECLARED_WITHOUT_A_CODE_PATH` list, and
   asserts that every recorded entry also appears in this section. The seven, and the decision each is
   waiting on:
-  - `commerce_product_category_translation`, `commerce_product_attribute_translation`,
-    `commerce_product_attribute_value_translation`, `commerce_product_spu_translation`, and
-    `commerce_product_sku_translation` — **localization is an unimplemented feature**, not a schema
-    question. The baseline models per-locale names for all five entities, the seed manifest carries a
-    `localeSet`, and no operation, read model, or command reads a locale: every write stores the
-    default locale on the base row. Wiring this needs a locale input on the write bodies, a
-    locale filter on the reads, and a decision about whether a missing translation falls back to the
-    base row or is an error.
+  - *(closed 2026-11-12)* The five `*_translation` tables and `commerce_product_brand_translation`
+    are wired: writes carry an optional `locale` (the default language lands on the base row, any
+    other locale lands on the translation row), and the list reads take a `locale` filter whose
+    missing translations fall back to the base row — the seed manifest's `fallbackLocale` rule.
+    See `crates/sdkwork-merchandise-repository-sqlx/src/postgres_translations.rs`.
+  - `commerce_product_brand_translation` — **a missing write path for a table the brand family
+    already models.** The brand master row carries one default-locale name; a localized catalog
+    cannot render a brand in any other locale. The translation write path is the i18n wave that
+    also wires the five translation tables below, so the gap is the operation, not the table.
   - `commerce_product_spu_attribute` — **a missing write path for a feature the schema already
     models.** `commerce_product_category_attribute` reserves an attribute as a `parameter` or a
     `sales` axis; only the sales axes are reachable today, through the SKU variant bindings. A

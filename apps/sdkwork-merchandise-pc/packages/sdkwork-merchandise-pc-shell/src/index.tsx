@@ -1,12 +1,11 @@
 import { buildProductDraft, describeProduct } from "@sdkwork/merchandise-pc-admin-core";
 
-const productDraft = buildProductDraft({ name: "Product catalog", slug: "" });
+const productDraft = buildProductDraft({ productNo: "SPU-CATALOG-DEMO", title: "Product catalog" });
 
 export function MerchandiseAppShell() {
   const headline = describeProduct({
     id: "catalog",
-    name: productDraft.name,
-    slug: productDraft.slug,
+    name: productDraft.title,
     status: "draft",
   });
 

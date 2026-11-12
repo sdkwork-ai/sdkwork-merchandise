@@ -55,6 +55,9 @@ pub enum CatalogRepositoryCommand {
     CreatePriceListItem,
     UpdatePriceListItem,
     DeletePriceListItem,
+    CreateBrand,
+    UpdateBrand,
+    DeleteBrand,
     CreateMedia,
     UpdateMedia,
     DeleteMedia,
@@ -94,6 +97,9 @@ impl CatalogPortRequirement {
             CatalogRepositoryCommand::CreatePriceListItem,
             CatalogRepositoryCommand::UpdatePriceListItem,
             CatalogRepositoryCommand::DeletePriceListItem,
+            CatalogRepositoryCommand::CreateBrand,
+            CatalogRepositoryCommand::UpdateBrand,
+            CatalogRepositoryCommand::DeleteBrand,
             CatalogRepositoryCommand::CreateMedia,
             CatalogRepositoryCommand::UpdateMedia,
             CatalogRepositoryCommand::DeleteMedia,
@@ -242,6 +248,8 @@ pub struct SpuRecord {
     pub organization_id: i64,
     pub spu_no: String,
     pub category_id: i64,
+    /// The brand this product belongs to, when one is declared.
+    pub brand_id: Option<i64>,
     pub name: String,
     pub title: Option<String>,
     pub subtitle: Option<String>,
@@ -317,6 +325,16 @@ pub struct SkuRecord {
     pub barcode: Option<String>,
     /// Ship weight in grams, when declared.
     pub weight_gram: Option<i64>,
+    /// The quantity a single order must buy at least.
+    pub min_order_quantity: i64,
+    /// The quantity a single order may buy at most, when capped.
+    pub max_order_quantity: Option<i64>,
+    /// The step the orderable quantity moves in (a case, a dozen).
+    pub step_quantity: i64,
+    /// The unit the buyer names (a box, a can), when declared.
+    pub package_unit: Option<String>,
+    /// How many sellable units one package holds, when declared.
+    pub units_per_package: Option<i64>,
     pub fulfillment_type: String,
     pub inventory_tracking: String,
     /// What happens when the SKU's tracked stock runs out. `backorder` is only legal on a
@@ -427,6 +445,29 @@ pub struct PriceListItemRecord {
     /// The quantity this step starts at; 1 is the first rung of the ladder.
     pub min_quantity: i64,
     pub status: String,
+    /// The row's optimistic-concurrency version.
+    ///
+    /// One column carries both directions of the same fact. On a read it is the version the caller
+    /// must echo back as `If-Match` on its next write; on a write it is the version the row is at
+    /// *after* the write, which is what to echo back next. Because the baseline advances one column
+    /// and the precondition compares that same column, there is exactly one notion of "how old is
+    /// this copy", and a caller cannot hold a version of one thing while editing another.
+    pub version: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Read model of one `commerce_product_brand` row.
+#[derive(Clone, Debug)]
+pub struct BrandRecord {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub organization_id: i64,
+    pub brand_no: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub sort_order: i64,
     /// The row's optimistic-concurrency version.
     ///
     /// One column carries both directions of the same fact. On a read it is the version the caller
@@ -816,6 +857,36 @@ pub trait CatalogRepositoryPort: Send + Sync {
     fn delete_sku<'a>(
         &'a self,
         command: DeleteProductSkuCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<()>>;
+
+    fn list_brands<'a>(
+        &'a self,
+        query: BrandListQuery,
+    ) -> CommerceCatalogFuture<'a, Vec<BrandRecord>>;
+
+    fn list_brands_page<'a>(
+        &'a self,
+        query: BrandListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<BrandRecord>>;
+
+    fn retrieve_brand<'a>(
+        &'a self,
+        query: BrandRetrieveQuery,
+    ) -> CommerceCatalogFuture<'a, Option<BrandRecord>>;
+
+    fn create_brand<'a>(
+        &'a self,
+        command: CreateBrandCommand,
+    ) -> CommerceCatalogFuture<'a, BrandRecord>;
+
+    fn update_brand<'a>(
+        &'a self,
+        command: UpdateBrandCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<BrandRecord>>;
+
+    fn delete_brand<'a>(
+        &'a self,
+        command: DeleteBrandCommand,
     ) -> CommerceCatalogFuture<'a, GuardedWrite<()>>;
 
     fn list_media<'a>(

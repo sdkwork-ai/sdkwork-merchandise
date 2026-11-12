@@ -21,7 +21,8 @@
     "grantMode": "current",
     "platform": "WEB",
     "tenantId": "100001",
-    "organizationId": "0"
+    "organizationId": "0",
+    "appId": "sdkwork-merchandise"
   },
   "runtime": {
     "family": "web",

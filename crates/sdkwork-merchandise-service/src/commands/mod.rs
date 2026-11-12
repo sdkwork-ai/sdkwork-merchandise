@@ -9,6 +9,8 @@ use crate::domain::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateCategoryCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -28,6 +30,8 @@ pub struct CreateCategoryCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdateCategoryCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -77,6 +81,8 @@ pub struct DeleteCategoryCommand {
 /// longer fits, and the update command deliberately does not carry them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateAttributeCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -100,6 +106,8 @@ pub struct CreateAttributeCommand {
 /// bindings and SKU axes reference the row and a soft delete would strand them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdateAttributeCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -129,6 +137,8 @@ pub struct UpdateAttributeCommand {
 /// same transaction, because the command cannot see the attribute row.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateAttributeValueCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -151,6 +161,8 @@ pub struct CreateAttributeValueCommand {
 /// value to another attribute or renaming its key is a delete plus a create, not an edit.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdateAttributeValueCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -280,6 +292,8 @@ pub struct UpdatePriceListCommand {
 /// `commerce_product_spu_translation`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateProductSpuCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -290,6 +304,8 @@ pub struct CreateProductSpuCommand {
     pub description: Option<String>,
     pub product_type: ProductType,
     pub category_id: String,
+    /// The brand this product belongs to, as an int64 string.
+    pub brand_id: Option<String>,
     /// The manufacturer's standard model number under the brand, when one is declared.
     pub model_no: Option<String>,
     /// The product-level barcode (GTIN/EAN), unique per tenant while the row is live
@@ -306,6 +322,8 @@ pub struct CreateProductSpuCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdateProductSpuCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -327,6 +345,9 @@ pub struct UpdateProductSpuCommand {
     /// from it and is `NOT NULL` with a `char_length BETWEEN 1 AND 300` CHECK.
     pub description: Option<Option<String>>,
     pub category_id: Option<String>,
+    /// The brand this product belongs to. Three-state: an explicit null detaches the product
+    /// from its brand.
+    pub brand_id: Option<Option<String>>,
     /// The manufacturer's model number. Three-state: the column is nullable, so an omitted key
     /// keeps the stored value and an explicit null removes it.
     pub model_no: Option<Option<String>>,
@@ -441,6 +462,8 @@ pub struct ArchiveSpuCommand {
 /// `sku_no` as the signature — see `docs/architecture/tech/TECH_ARCHITECTURE.md` section 3.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CreateProductSkuCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -458,6 +481,16 @@ pub struct CreateProductSkuCommand {
     pub barcode: Option<String>,
     /// Ship weight in grams, the figure logistics rates a shipment from.
     pub weight_gram: Option<i64>,
+    /// The quantity a single order must buy at least. Defaults to 1.
+    pub min_order_quantity: Option<i64>,
+    /// The quantity a single order may buy at most, when capped.
+    pub max_order_quantity: Option<i64>,
+    /// The step the orderable quantity moves in. Defaults to 1.
+    pub step_quantity: Option<i64>,
+    /// The unit the buyer names (a box, a can), when declared.
+    pub package_unit: Option<String>,
+    /// How many sellable units one package holds, when declared.
+    pub units_per_package: Option<i64>,
     pub currency_code: String,
     pub fulfillment_type: FulfillmentType,
     pub inventory_tracking: InventoryTrackingMode,
@@ -498,6 +531,8 @@ pub struct CreateProductSkuCommand {
 /// reads the row, so nothing has to be inferred from a sentinel amount.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UpdateProductSkuCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
     /// The authenticated principal this write is attributed to.
     pub actor: String,
     pub tenant_id: String,
@@ -513,6 +548,14 @@ pub struct UpdateProductSkuCommand {
     pub barcode: Option<Option<String>>,
     /// Three-state.
     pub weight_gram: Option<Option<i64>>,
+    /// The trade constraints are three-state: an explicit null removes the cap (or the
+    /// package facts) while an omitted key keeps the stored value. The NOT NULL defaults
+    /// (min 1, step 1) are restated as values, never cleared.
+    pub min_order_quantity: Option<i64>,
+    pub max_order_quantity: Option<Option<i64>>,
+    pub step_quantity: Option<i64>,
+    pub package_unit: Option<Option<String>>,
+    pub units_per_package: Option<Option<i64>>,
     pub currency_code: Option<String>,
     pub fulfillment_type: Option<FulfillmentType>,
     pub inventory_tracking: Option<InventoryTrackingMode>,
@@ -609,6 +652,68 @@ pub struct DeleteMediaCommand {
     pub actor: String,
     pub tenant_id: String,
     pub media_id: String,
+    /// The row version the caller read, taken from the request's `If-Match` precondition.
+    ///
+    /// A mismatch is not a malformed request: it means somebody else wrote the row since this
+    /// caller read it, so the caller's copy is stale and the write would silently discard their
+    /// change. The repository compares this against `version` inside the same statement that
+    /// writes, which is what makes the comparison race-free.
+    pub expected_version: i64,
+}
+
+/// Creates one brand.
+///
+/// The brand is master data the SPU points at, so the name is normalized here
+/// and every product of the brand reads the same row. Logo media reuses the
+/// media surface with `owner_type = 'brand'` / `media_role = 'logo'`; this
+/// command carries no media of its own.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateBrandCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
+    pub actor: String,
+    pub tenant_id: String,
+    pub organization_id: String,
+    pub brand_no: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub sort_order: i64,
+}
+
+/// Updates one brand.
+///
+/// `description` is three-state because the column is nullable: an omitted key
+/// keeps the stored text and an explicit null removes it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpdateBrandCommand {
+    /// The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone.
+    pub locale: Option<String>,
+    pub actor: String,
+    pub tenant_id: String,
+    pub brand_id: String,
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+    pub sort_order: Option<i64>,
+    pub status: Option<LifecycleStatus>,
+    /// The row version the caller read, taken from the request's `If-Match` precondition.
+    ///
+    /// A mismatch is not a malformed request: it means somebody else wrote the row since this
+    /// caller read it, so the caller's copy is stale and the write would silently discard their
+    /// change. The repository compares this against `version` inside the same statement that
+    /// writes, which is what makes the comparison race-free.
+    pub expected_version: i64,
+}
+
+/// Deletes one brand (soft delete).
+///
+/// Products pointing at the brand keep their reference: `spu.brand_id` has no
+/// `ON DELETE` cascade, and a soft delete leaves the row — and the products'
+/// history — intact.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeleteBrandCommand {
+    pub actor: String,
+    pub tenant_id: String,
+    pub brand_id: String,
     /// The row version the caller read, taken from the request's `If-Match` precondition.
     ///
     /// A mismatch is not a malformed request: it means somebody else wrote the row since this
@@ -1005,6 +1110,45 @@ impl CreatePriceListCommand {
         Ok(())
     }
 }
+impl CreateBrandCommand {
+    pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
+        crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
+        crate::validation::require_non_empty("organization_id", &self.organization_id)?;
+        crate::validation::require_non_empty("brand_no", &self.brand_no)?;
+        crate::validation::require_non_empty("name", &self.name)?;
+        crate::validation::require_within_chars(
+            "name",
+            &self.name,
+            crate::validation::BRAND_NAME_MAX_CHARS,
+        )?;
+        crate::validation::require_non_negative("sort_order", self.sort_order)?;
+        Ok(())
+    }
+}
+impl UpdateBrandCommand {
+    pub fn validate(&self) -> Result<(), CommerceServiceError> {
+        crate::validation::require_non_empty("actor", &self.actor)?;
+        crate::validation::require_non_empty("tenant_id", &self.tenant_id)?;
+        crate::validation::require_non_empty("brand_id", &self.brand_id)?;
+        if let Some(name) = self.name.as_deref() {
+            crate::validation::require_non_empty("name", name)?;
+            crate::validation::require_within_chars(
+                "name",
+                name,
+                crate::validation::BRAND_NAME_MAX_CHARS,
+            )?;
+        }
+        if let Some(description) = self.description.as_ref().and_then(Option::as_deref) {
+            crate::validation::require_non_empty("description", description)?;
+        }
+        if let Some(sort_order) = self.sort_order {
+            crate::validation::require_non_negative("sort_order", sort_order)?;
+        }
+        Ok(())
+    }
+}
+impl_required_text_command!(DeleteBrandCommand, actor, tenant_id, brand_id);
 impl CreatePriceListItemCommand {
     pub fn validate(&self) -> Result<(), CommerceServiceError> {
         crate::validation::require_non_empty("actor", &self.actor)?;
@@ -1164,6 +1308,30 @@ impl UpdateProductSkuCommand {
         }
         if let Some(Some(weight)) = self.weight_gram {
             crate::validation::require_non_negative("weight_gram", weight)?;
+        }
+        if let Some(min) = self.min_order_quantity {
+            if min < 1 {
+                return Err(CommerceServiceError::validation(
+                    "min_order_quantity must be at least 1: it is what a single order buys",
+                ));
+            }
+        }
+        if let Some(step) = self.step_quantity {
+            if step < 1 {
+                return Err(CommerceServiceError::validation(
+                    "step_quantity must be at least 1: it is what the orderable quantity moves in",
+                ));
+            }
+        }
+        if let Some(Some(max)) = self.max_order_quantity {
+            crate::validation::require_non_negative("max_order_quantity", max)?;
+        }
+        if let Some(Some(units)) = self.units_per_package {
+            if units < 1 {
+                return Err(CommerceServiceError::validation(
+                    "units_per_package must be at least 1",
+                ));
+            }
         }
         if let Some(currency_code) = self.currency_code.as_deref() {
             crate::validation::require_non_empty("currency_code", currency_code)?;

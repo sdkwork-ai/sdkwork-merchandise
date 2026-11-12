@@ -571,6 +571,15 @@ CREATE TABLE IF NOT EXISTS commerce_product_sku (
     inventory_policy TEXT NOT NULL DEFAULT 'deny',
     weight_gram BIGINT,
     barcode TEXT,
+    -- Trade constraints: the minimum and maximum a single order may buy, the step the
+    -- quantity moves in (a case, a dozen), and the unit the buyer actually names. The
+    -- baseline keeps one carrier per fact; these are columns, not metadata, because order
+    -- validation constrains on them (DATABASE_SPEC section 13).
+    min_order_quantity BIGINT NOT NULL DEFAULT 1,
+    max_order_quantity BIGINT,
+    step_quantity BIGINT NOT NULL DEFAULT 1,
+    package_unit TEXT,
+    units_per_package BIGINT,
     -- Capability-owned metadata for a SKU that sells a service rather than a physical good.
     --
     -- The baseline keeps one carrier per fact, so this column is deliberately narrow: sales axes
@@ -626,7 +635,15 @@ CREATE TABLE IF NOT EXISTS commerce_product_sku (
     CONSTRAINT ck_commerce_product_sku_sales_requires_active
         CHECK (sales_status <> 'active' OR status = 'active'),
     CONSTRAINT ck_commerce_product_sku_published_at
-        CHECK (published_at IS NULL OR status <> 'draft')
+        CHECK (published_at IS NULL OR status <> 'draft'),
+    CONSTRAINT ck_commerce_product_sku_min_order_quantity
+        CHECK (min_order_quantity >= 1),
+    CONSTRAINT ck_commerce_product_sku_step_quantity
+        CHECK (step_quantity >= 1),
+    CONSTRAINT ck_commerce_product_sku_max_order_quantity
+        CHECK (max_order_quantity IS NULL OR max_order_quantity >= min_order_quantity),
+    CONSTRAINT ck_commerce_product_sku_units_per_package
+        CHECK (units_per_package IS NULL OR units_per_package >= 1)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_commerce_product_sku_tenant_no
@@ -745,9 +762,9 @@ CREATE TABLE IF NOT EXISTS commerce_product_media (
     PRIMARY KEY (id),
     CONSTRAINT uk_commerce_product_media_uuid UNIQUE (uuid),
     CONSTRAINT ck_commerce_product_media_owner_type
-        CHECK (owner_type IN ('spu', 'sku', 'category', 'attribute_value')),
+        CHECK (owner_type IN ('spu', 'sku', 'category', 'attribute_value', 'brand')),
     CONSTRAINT ck_commerce_product_media_role
-        CHECK (media_role IN ('main_image', 'gallery_image', 'detail_image', 'sku_image', 'video', 'manual', 'certificate')),
+        CHECK (media_role IN ('main_image', 'gallery_image', 'detail_image', 'sku_image', 'video', 'manual', 'certificate', 'logo')),
     -- An attribute-value swatch is an image; a SKU axis carries a sku_image.
     CONSTRAINT ck_commerce_product_media_owner_role
         CHECK (owner_type <> 'attribute_value' OR media_role IN ('main_image', 'sku_image', 'gallery_image')),
@@ -876,3 +893,80 @@ CREATE INDEX IF NOT EXISTS idx_commerce_price_list_item_resolution
 
 CREATE INDEX IF NOT EXISTS idx_commerce_price_list_item_sku
     ON commerce_price_list_item (sku_id);
+
+-- ---------------------------------------------------------------------------
+-- commerce_product_brand (+ translation)
+-- ---------------------------------------------------------------------------
+-- A brand is master data the SPU points at (`commerce_product_spu.brand_id`),
+-- not a free-text field: an operator filters and merchandises by it, so the
+-- name is normalized once and every product of the brand reads the same row.
+-- Brand media reuses `commerce_product_media` with `owner_type = 'brand'` and
+-- `media_role = 'logo'` -- the same one-carrier-per-fact rule the other owners
+-- follow, and the same unique slot (`uk_commerce_product_media_slot`).
+CREATE TABLE IF NOT EXISTS commerce_product_brand (
+    id BIGINT NOT NULL,
+    uuid UUID NOT NULL DEFAULT gen_random_uuid(),
+    tenant_id BIGINT NOT NULL,
+    organization_id BIGINT NOT NULL DEFAULT 0,
+    brand_no TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    sort_order BIGINT NOT NULL DEFAULT 0,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by BIGINT,
+    updated_by BIGINT,
+    deleted_at TIMESTAMPTZ,
+    deleted_by BIGINT,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_commerce_product_brand_uuid UNIQUE (uuid),
+    CONSTRAINT ck_commerce_product_brand_name_length
+        CHECK (char_length(name) BETWEEN 1 AND 200),
+    CONSTRAINT ck_commerce_product_brand_status
+        CHECK (status IN ('active', 'inactive'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_commerce_product_brand_tenant_no
+    ON commerce_product_brand (tenant_id, brand_no)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_commerce_product_brand_tenant_status_sort
+    ON commerce_product_brand (tenant_id, organization_id, status, sort_order, id)
+    WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS commerce_product_brand_translation (
+    id BIGINT NOT NULL,
+    tenant_id BIGINT NOT NULL,
+    organization_id BIGINT NOT NULL DEFAULT 0,
+    brand_id BIGINT NOT NULL,
+    locale TEXT NOT NULL,
+    field_name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (id),
+    CONSTRAINT fk_commerce_product_brand_translation_brand
+        FOREIGN KEY (brand_id) REFERENCES commerce_product_brand (id) ON DELETE CASCADE,
+    CONSTRAINT ck_commerce_product_brand_translation_locale
+        CHECK (locale ~ '^[a-z]{2}(-[A-Z][a-z]{3})?(-[A-Z]{2})?$'),
+    CONSTRAINT ck_commerce_product_brand_translation_field
+        CHECK (field_name IN ('name', 'description')),
+    CONSTRAINT ck_commerce_product_brand_translation_value
+        CHECK (char_length(value) BETWEEN 1 AND 2000)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_commerce_product_brand_translation
+    ON commerce_product_brand_translation (brand_id, locale, field_name);
+
+CREATE INDEX IF NOT EXISTS idx_commerce_product_brand_translation_lookup
+    ON commerce_product_brand_translation (tenant_id, locale, brand_id);
+
+-- The SPU's brand reference becomes a real foreign key now that the table it
+-- names exists. Products keep a nullable brand: a product without a brand is
+-- ordinary (groceries, services), and the baseline never required one.
+ALTER TABLE commerce_product_spu
+    ADD CONSTRAINT fk_commerce_product_spu_brand
+        FOREIGN KEY (brand_id) REFERENCES commerce_product_brand (id);

@@ -456,6 +456,12 @@ const ENUM_BINDINGS = [
     table: "commerce_price_list_item",
     column: "status",
   },
+  {
+    schema: "UpdateBrandRequest",
+    property: "status",
+    table: "commerce_product_brand",
+    column: "status",
+  },
 ];
 
 /**
@@ -547,6 +553,20 @@ const LENGTH_BINDINGS = [
     property: "name",
     constant: "PRICE_LIST_NO_MAX_CHARS",
     table: "commerce_price_list",
+    column: "name",
+  },
+  {
+    schema: "CreateBrandRequest",
+    property: "name",
+    constant: "BRAND_NAME_MAX_CHARS",
+    table: "commerce_product_brand",
+    column: "name",
+  },
+  {
+    schema: "UpdateBrandRequest",
+    property: "name",
+    constant: "BRAND_NAME_MAX_CHARS",
+    table: "commerce_product_brand",
     column: "name",
   },
 ];

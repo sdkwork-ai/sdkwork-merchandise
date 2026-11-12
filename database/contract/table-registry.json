@@ -103,6 +103,18 @@
       "owner": "merchandise-platform",
       "compliance_level": "L2",
       "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_brand",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
+    },
+    {
+      "table_name": "commerce_product_brand_translation",
+      "owner": "merchandise-platform",
+      "compliance_level": "L2",
+      "lifecycle_status": "active"
     }
   ]
 }

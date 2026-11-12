@@ -181,6 +181,8 @@ pub enum MediaOwnerType {
     Category,
     /// Stored as `attribute_value`: a swatch attached to one dictionary value.
     AttributeValue,
+    /// Stored as `brand`: a brand's logo on the brand master row.
+    Brand,
 }
 
 /// `commerce_product_media.media_role`.
@@ -202,6 +204,8 @@ pub enum MediaRole {
     Video,
     Manual,
     Certificate,
+    /// Stored as `logo`: the one picture a brand master row carries.
+    Logo,
 }
 
 // There is deliberately no draft family in this module: the catalog write model is the command set
@@ -216,6 +220,7 @@ impl MediaOwnerType {
             Self::Sku => "sku",
             Self::Category => "category",
             Self::AttributeValue => "attribute_value",
+            Self::Brand => "brand",
         }
     }
 
@@ -225,6 +230,7 @@ impl MediaOwnerType {
             "sku" => Self::Sku,
             "category" => Self::Category,
             "attribute_value" => Self::AttributeValue,
+            "brand" => Self::Brand,
             _ => return Err(unknown_value(field, raw, MEDIA_OWNER_TYPE_VALUES)),
         };
         Ok(value)
@@ -243,7 +249,7 @@ impl MediaOwnerType {
                 role,
                 MediaRole::MainImage | MediaRole::SkuImage | MediaRole::GalleryImage
             ),
-            Self::Spu | Self::Sku | Self::Category => true,
+            Self::Spu | Self::Sku | Self::Category | Self::Brand => true,
         }
     }
 }
@@ -259,6 +265,7 @@ impl MediaRole {
             Self::Video => "video",
             Self::Manual => "manual",
             Self::Certificate => "certificate",
+            Self::Logo => "logo",
         }
     }
 
@@ -271,6 +278,7 @@ impl MediaRole {
             "video" => Self::Video,
             "manual" => Self::Manual,
             "certificate" => Self::Certificate,
+            "logo" => Self::Logo,
             _ => return Err(unknown_value(field, raw, MEDIA_ROLE_VALUES)),
         };
         Ok(value)
@@ -546,9 +554,9 @@ const ATTRIBUTE_ROLE_VALUES: &str = "key, sales, parameter";
 const ATTRIBUTE_VALUE_TYPE_VALUES: &str = "enum, text, number, bool, date";
 const ATTRIBUTE_INPUT_HINT_VALUES: &str = "select, multi_select, text, number, toggle, date";
 const SPU_ATTRIBUTE_ROLE_VALUES: &str = "key, parameter";
-const MEDIA_OWNER_TYPE_VALUES: &str = "spu, sku, category, attribute_value";
+const MEDIA_OWNER_TYPE_VALUES: &str = "spu, sku, category, attribute_value, brand";
 const MEDIA_ROLE_VALUES: &str =
-    "main_image, gallery_image, detail_image, sku_image, video, manual, certificate";
+    "main_image, gallery_image, detail_image, sku_image, video, manual, certificate, logo";
 
 /// Rejects a value the baseline CHECK would reject, naming the permitted set.
 ///

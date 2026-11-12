@@ -1,5 +1,40 @@
 # Merchandise Changelog
 
+## 2026-11-12 - 商品体系行业对齐（商业化落地收口）
+
+回归检查 2026-09-23 审计的 L1–L7 行业分层缺口后，闭环全部可落地差距。详见
+[REVIEW-20261112-merchandise-industry-alignment.md](../engineering/reviews/REVIEW-20261112-merchandise-industry-alignment.md)。
+
+- **品牌实体**：新增 `commerce_product_brand`（+翻译表）与 SPU `brand_id` 外键；
+  `/brands` 五操作（list/create/retrieve/update/delete，软删 + 乐观锁）；品牌 logo 复用
+  媒体机制（`owner_type=brand`、`media_role=logo`）。迁移
+  `0002_brand_and_trade_constraints.up.sql`。
+- **属性体系闭环**：属性 create 放开 `valueType/inputHint/isMultiValue/unitSymbol/sortOrder`；
+  新增 `PATCH /attributes/{id}` 与 `attribute_values` 值字典 CRUD（色卡、媒体引用、
+  被活跃变体引用时 409）。
+- **SPU 参数属性写路径**：`PUT /products/{id}/attributes` 全量替换（类目模板校验、
+  key/parameter 角色、字典值 XOR raw_value）；Product 响应内嵌规格表——商品详情页
+  规格数据自此可落库。
+- **价格体系闭环**：`price_list_items` CRUD（阶梯 `min_quantity`、tier 唯一、币种从
+  list 继承）；`price_list.customer_segment` 打通；`currencySymbol` 读时解析。
+  价格解析四问裁决落地（见评审文档 §1）。
+- **SKU 交易约束**：新增 `min/max_order_quantity`、`step_quantity`、`package_unit`、
+  `units_per_package` 列与 CHECK；边界校验（min≥1、step≥1、max≥min）+ 锁行决值。
+- **商业列接线**：SPU `model_no/barcode/weight_gram/volume_ml/tax_class_code`、
+  SKU `barcode/weight_gram/cost_price_minor/inventory_policy`（backorder 需 tracked）
+  全部可写可读。
+- **审计 actor**：`IamAppContext.user_id` 贯穿全部写命令与语句，`created_by/updated_by/
+  deleted_by` 不再为 NULL。
+- **契约补全**：新增单资源 retrieve（categories/skus/attributes/price_lists）；
+  `tenantId/organizationId` 在全部资源发布。
+- **i18n 写路径**：写带可选 `locale`（默认语言落 base 行、其它 locale 落翻译行）、
+  列表读带 `locale` 过滤（缺失翻译回退基础行）；六张翻译表全部接线，
+  表覆盖门禁缺口清零。
+- **加固**：`CatalogRepositoryPort` 内存测试替身（`tests/guarded_write.rs`）驱动
+  守卫写端到端（版本往返 + 42801）；路由数 27→47 操作/23 路径。
+
+
+
 ## Unreleased - 2026-09-23
 
 - Removed the `spec_json` / `_sdkwork` metadata envelope. Product

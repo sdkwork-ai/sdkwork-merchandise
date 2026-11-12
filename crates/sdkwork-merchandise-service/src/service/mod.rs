@@ -40,6 +40,9 @@ pub fn catalog_service_contract() -> CommerceServiceContract {
             "skus.create",
             "skus.update",
             "skus.delete",
+            "brands.create",
+            "brands.update",
+            "brands.delete",
             "media.create",
             "media.update",
             "media.delete",
@@ -58,6 +61,8 @@ pub fn catalog_service_contract() -> CommerceServiceContract {
             "products.management.retrieve",
             "skus.list",
             "skus.retrieve",
+            "brands.list",
+            "brands.retrieve",
             "media.list",
         ],
         vec![

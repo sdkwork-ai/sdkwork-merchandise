@@ -35,20 +35,22 @@
 //! boundary a question only the repository can answer.
 
 use sdkwork_merchandise_service::{
-    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRetrieveQuery, PriceListRetrieveQuery, AttributeValueListQuery,
-    AttributeValueRecord, CatalogOffsetPage, CatalogRepositoryPort, CategoryAttributeListQuery,
-    CategoryAttributeRecord, CategoryListQuery, CategoryRecord, CategoryRetrieveQuery,
-    CommerceCatalogFuture, CreateAttributeCommand, CreateAttributeValueCommand,
+    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRetrieveQuery,
+    AttributeValueListQuery, AttributeValueRecord, BrandListQuery, BrandRecord, BrandRetrieveQuery,
+    CatalogOffsetPage, CatalogRepositoryPort, CategoryAttributeListQuery, CategoryAttributeRecord,
+    CategoryListQuery, CategoryRecord, CategoryRetrieveQuery, CommerceCatalogFuture,
+    CreateAttributeCommand, CreateAttributeValueCommand, CreateBrandCommand,
     CreateCategoryAttributeCommand, CreateCategoryCommand, CreateMediaCommand,
     CreatePriceListCommand, CreatePriceListItemCommand, CreateProductSkuCommand,
-    CreateProductSpuCommand, DeleteAttributeValueCommand, DeleteCategoryAttributeCommand,
-    DeleteCategoryCommand, DeleteMediaCommand, DeletePriceListItemCommand, DeleteProductSkuCommand,
-    DeleteProductSpuCommand, GuardedWrite, MediaListQuery, MediaRecord, PriceListItemListQuery,
-    PriceListItemRecord, PriceListListQuery, PriceListRecord, ProductAttributesRetrieveQuery,
+    CreateProductSpuCommand, DeleteAttributeValueCommand, DeleteBrandCommand,
+    DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
+    DeletePriceListItemCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, GuardedWrite,
+    MediaListQuery, MediaRecord, PriceListItemListQuery, PriceListItemRecord, PriceListListQuery,
+    PriceListRecord, PriceListRetrieveQuery, ProductAttributesRetrieveQuery,
     ProductAttributesWrite, ProductSkuListQuery, ProductSkuRetrieveQuery, ProductSpuListQuery,
     ProductSpuRetrieveQuery, PublishSpuCommand, ReplaceProductAttributesCommand, SkuRecord,
     SpuAttributeRecord, SpuRecord, UpdateAttributeCommand, UpdateAttributeValueCommand,
-    UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
+    UpdateBrandCommand, UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
     UpdatePriceListCommand, UpdatePriceListItemCommand, UpdateProductSkuCommand,
     UpdateProductSpuCommand,
 };
@@ -448,6 +450,57 @@ impl CatalogRepositoryPort for PostgresCommerceCatalogStore {
         command: DeleteProductSkuCommand,
     ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
         Box::pin(async move { self.delete_sku(&command).await })
+    }
+
+    fn list_brands<'a>(
+        &'a self,
+        query: BrandListQuery,
+    ) -> CommerceCatalogFuture<'a, Vec<BrandRecord>> {
+        Box::pin(async move { self.list_brands(&query).await })
+    }
+
+    fn list_brands_page<'a>(
+        &'a self,
+        query: BrandListQuery,
+    ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<BrandRecord>> {
+        Box::pin(async move {
+            let items = self.list_brands(&query).await?;
+            let total_items = self.count_brands(&query).await?;
+            Ok(CatalogOffsetPage::new(
+                items,
+                query.page,
+                query.page_size,
+                total_items,
+            ))
+        })
+    }
+
+    fn retrieve_brand<'a>(
+        &'a self,
+        query: BrandRetrieveQuery,
+    ) -> CommerceCatalogFuture<'a, Option<BrandRecord>> {
+        Box::pin(async move { self.retrieve_brand(&query).await })
+    }
+
+    fn create_brand<'a>(
+        &'a self,
+        command: CreateBrandCommand,
+    ) -> CommerceCatalogFuture<'a, BrandRecord> {
+        Box::pin(async move { self.create_brand(&command).await })
+    }
+
+    fn update_brand<'a>(
+        &'a self,
+        command: UpdateBrandCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<BrandRecord>> {
+        Box::pin(async move { self.update_brand(&command).await })
+    }
+
+    fn delete_brand<'a>(
+        &'a self,
+        command: DeleteBrandCommand,
+    ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
+        Box::pin(async move { self.delete_brand(&command).await })
     }
 
     fn list_media<'a>(

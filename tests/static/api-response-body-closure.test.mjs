@@ -214,6 +214,7 @@ function handlerBodies(source) {
 
 /** `map_* -> resource schema name`. Longest names first so `map_category_attribute` wins. */
 const MAPPER_TO_RESOURCE = {
+  map_brand: 'Brand',
   map_price_list_item: 'PriceListItem',
   map_product_attributes: 'ProductAttributes',
   map_category_attribute: 'CategoryAttribute',
@@ -330,8 +331,8 @@ const MONEY_BINDINGS = {
 // ================================================================ assertions
 
 test('the contract, the router, the response structs, and the baseline all parse', () => {
-  assert.equal(operations.length, 42, 'contract must declare 42 operations');
-  assert.equal(Object.keys(rustStructs).length, 10, 'ten response structs are published');
+  assert.equal(operations.length, 47, 'contract must declare 47 operations');
+  assert.equal(Object.keys(rustStructs).length, 11, 'eleven response structs are published');
   assert.ok(routed['GET /backend/v3/api/catalog/products'], 'route table must yield handlers');
   assert.ok(bodies.backend_list_products, 'handler bodies must be splittable');
   for (const resource of Object.values(DOCUMENTED_TABLES)) tableBlock(resource);
@@ -369,7 +370,7 @@ test('each operation publishes the resource its handler actually maps', () => {
     const body = successBodySchema(operation);
     const handlerSource = bodies[handler];
     assert.ok(handlerSource, `${operation.operationId}: handler ${handler} body not found`);
-    const mappers = [...handlerSource.matchAll(/\bmap_(category_attribute|product_attributes|attribute_value|price_list_item|price_list|category|product|sku|media|attribute)\b/g)]
+    const mappers = [...handlerSource.matchAll(/\bmap_(category_attribute|product_attributes|attribute_value|brand|price_list_item|brand|price_list|category|product|sku|media|attribute)\b/g)]
       .map((match) => match[0]);
     const distinct = [...new Set(mappers)];
     if (!body) {
@@ -573,7 +574,7 @@ test('creation responses carry a body and delete responses do not', () => {
 
 test('list responses publish a typed array and the standard page info', () => {
   const lists = operations.filter(({ operation }) => operation.operationId.endsWith('.list'));
-  assert.equal(lists.length, 9, 'nine list operations are expected');
+  assert.equal(lists.length, 10, 'ten list operations are expected');
   for (const { operation } of lists) {
     const schema = deref(successBodySchema(operation).schema);
     assert.ok(schema.allOf, `${operation.operationId}: a list response must be an allOf extension`);

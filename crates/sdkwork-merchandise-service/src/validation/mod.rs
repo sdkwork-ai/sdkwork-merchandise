@@ -23,6 +23,9 @@ pub const CATEGORY_NAME_MAX_CHARS: usize = 200;
 /// `ck_commerce_product_attribute_name_length`.
 pub const ATTRIBUTE_NAME_MAX_CHARS: usize = 100;
 
+/// `ck_commerce_product_brand_name_length`.
+pub const BRAND_NAME_MAX_CHARS: usize = 200;
+
 /// `ck_commerce_product_spu_name_length`.
 ///
 /// `commerce_product_spu.name` is the default-locale display name and the repository derives it

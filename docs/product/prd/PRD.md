@@ -52,16 +52,21 @@ client applications that publish or select sellable merchandise.
 ## 4. Scope
 
 - SPU/SKU catalog master data and backend administration.
-- Category, attribute, category-attribute template, and price-list management.
-- Backend catalog route surface: `/backend/v3/api/catalog/*`, 27 routes,
-  contributed to `sdkwork-shop-backend-api` and generated in
+- Category, brand, attribute (typed, with a value dictionary), category-attribute template, price-list (with priced items), and media management.
+- Backend catalog route surface: `/backend/v3/api/catalog/*`, 47 operations across 23
+  paths, contributed to `sdkwork-shop-backend-api` and generated in
   `sdkwork-shop-backend-sdk`.
 - A PostgreSQL persistence adapter over the merchandise database baseline.
+- Trade constraints on the SKU (min/max order quantity, quantity step, package unit) validated at the boundary.
 - Money handling through the `sdkwork-commerce-money` kernel.
+- Audit attribution: every write carries the authenticated actor into `created_by`/`updated_by`/`deleted_by`.
+- Localization write path: an optional `locale` on writes and reads, missing translations falling back to the base row.
 
 Localization is split so that base tables carry the default language and
 `*_translation` tables carry the rest; two locales can therefore coexist.
-Promotional display data (badges, tags) is explicitly deferred rather than being
+Bundle (combo) products are explicitly deferred to a later milestone; the five
+product types cover the current business. Promotional display data (badges, tags) is
+explicitly deferred rather than being
 stored in a JSON side channel.
 
 ## 5. User Scenarios

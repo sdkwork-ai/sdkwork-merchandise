@@ -8,6 +8,8 @@ pub struct CategoryListQuery {
     pub status: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
+    /// The locale the text fields are rendered in; missing translations fall back to the base row.
+    pub locale: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,6 +25,27 @@ pub struct AttributeListQuery {
     pub status: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
+    /// The locale the text fields are rendered in; missing translations fall back to the base row.
+    pub locale: Option<String>,
+}
+
+/// Lists brands.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BrandListQuery {
+    pub tenant_id: String,
+    pub organization_id: Option<String>,
+    pub status: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+    /// The locale the text fields are rendered in; missing translations fall back to the base row.
+    pub locale: Option<String>,
+}
+
+/// Reads one brand.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BrandRetrieveQuery {
+    pub tenant_id: String,
+    pub brand_id: String,
 }
 
 /// Reads one attribute.
@@ -43,6 +66,7 @@ pub struct AttributeValueListQuery {
     pub organization_id: Option<String>,
     pub attribute_id: String,
     pub status: Option<String>,
+    pub locale: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }
@@ -120,11 +144,15 @@ pub struct ProductSpuListQuery {
     pub organization_id: Option<String>,
     pub q: Option<String>,
     pub category_id: Option<String>,
+    /// Narrows the page to one brand.
+    pub brand_id: Option<String>,
     pub product_type: Option<String>,
     pub status: Option<String>,
     pub sort: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
+    /// The locale the text fields are rendered in; missing translations fall back to the base row.
+    pub locale: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -148,6 +176,8 @@ pub struct ProductSkuListQuery {
     pub status: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
+    /// The locale the text fields are rendered in; missing translations fall back to the base row.
+    pub locale: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -222,19 +252,21 @@ macro_rules! impl_query_new {
     };
 }
 
-impl_query_new!(CategoryListQuery, required: [tenant_id], optional: [organization_id, parent_id, status], page: [page, page_size]);
+impl_query_new!(CategoryListQuery, required: [tenant_id], optional: [organization_id, parent_id, status, locale], page: [page, page_size]);
 impl_query_new!(CategoryRetrieveQuery, required: [tenant_id, category_id], optional: []);
-impl_query_new!(AttributeListQuery, required: [tenant_id], optional: [organization_id, status], page: [page, page_size]);
+impl_query_new!(AttributeListQuery, required: [tenant_id], optional: [organization_id, status, locale], page: [page, page_size]);
+impl_query_new!(BrandListQuery, required: [tenant_id], optional: [organization_id, status, locale], page: [page, page_size]);
+impl_query_new!(BrandRetrieveQuery, required: [tenant_id, brand_id], optional: []);
 impl_query_new!(AttributeRetrieveQuery, required: [tenant_id, attribute_id], optional: []);
 impl_query_new!(PriceListRetrieveQuery, required: [tenant_id, price_list_id], optional: []);
-impl_query_new!(AttributeValueListQuery, required: [tenant_id, attribute_id], optional: [organization_id, status], page: [page, page_size]);
+impl_query_new!(AttributeValueListQuery, required: [tenant_id, attribute_id], optional: [organization_id, status, locale], page: [page, page_size]);
 impl_query_new!(ProductAttributesRetrieveQuery, required: [tenant_id, spu_id], optional: []);
 impl_query_new!(PriceListListQuery, required: [tenant_id], optional: [organization_id, currency_code, market_code, customer_segment, status], page: [page, page_size]);
 impl_query_new!(PriceListItemListQuery, required: [tenant_id, price_list_id], optional: [organization_id, sku_id, status], page: [page, page_size]);
 impl_query_new!(CategoryAttributeListQuery, required: [tenant_id], optional: [organization_id, category_id, attribute_id, status], page: [page, page_size]);
-impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, q, category_id, product_type, status, sort], page: [page, page_size]);
+impl_query_new!(ProductSpuListQuery, required: [tenant_id], optional: [organization_id, q, category_id, brand_id, product_type, status, sort, locale], page: [page, page_size]);
 impl_query_new!(ProductSpuRetrieveQuery, required: [tenant_id, spu_id], optional: []);
-impl_query_new!(ProductSkuListQuery, required: [tenant_id], optional: [organization_id, spu_id, attribute_value_id, status], page: [page, page_size]);
+impl_query_new!(ProductSkuListQuery, required: [tenant_id], optional: [organization_id, spu_id, attribute_value_id, status, locale], page: [page, page_size]);
 impl_query_new!(ProductSkuRetrieveQuery, required: [tenant_id, sku_id], optional: []);
 impl_query_new!(MediaListQuery, required: [tenant_id], optional: [organization_id, owner_type, owner_id, media_role, status], page: [page, page_size]);
 
@@ -262,6 +294,7 @@ mod tests {
             Some("product-1"),
             None,
             Some("active"),
+            None,
             Some(1),
             Some(201),
         )

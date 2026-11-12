@@ -45,21 +45,23 @@ use sdkwork_commerce_money::MoneyUnit;
 use sdkwork_contract_service::CommerceServiceError;
 use sdkwork_database_id::IdGenerator;
 use sdkwork_merchandise_service::{
-    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRetrieveQuery, PriceListRetrieveQuery, AttributeRole, AttributeValueListQuery,
-    AttributeValueRecord, CategoryAttributeListQuery, CategoryAttributeRecord, CategoryListQuery,
-    CategoryRecord, CategoryRetrieveQuery, CreateAttributeCommand, CreateAttributeValueCommand,
+    ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRetrieveQuery, AttributeRole,
+    AttributeValueListQuery, AttributeValueRecord, BrandListQuery, BrandRecord, BrandRetrieveQuery,
+    CategoryAttributeListQuery, CategoryAttributeRecord, CategoryListQuery, CategoryRecord,
+    CategoryRetrieveQuery, CreateAttributeCommand, CreateAttributeValueCommand, CreateBrandCommand,
     CreateCategoryAttributeCommand, CreateCategoryCommand, CreateMediaCommand,
     CreatePriceListCommand, CreatePriceListItemCommand, CreateProductSkuCommand,
-    CreateProductSpuCommand, DeleteAttributeValueCommand, DeleteCategoryAttributeCommand,
-    DeleteCategoryCommand, DeleteMediaCommand, DeletePriceListItemCommand, DeleteProductSkuCommand,
-    DeleteProductSpuCommand, GuardedWrite, LifecycleStatus, MediaListQuery, MediaOwnerType,
-    MediaRecord, PriceListItemListQuery, PriceListItemRecord, PriceListListQuery, PriceListRecord,
+    CreateProductSpuCommand, DeleteAttributeValueCommand, DeleteBrandCommand,
+    DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
+    DeletePriceListItemCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, GuardedWrite,
+    LifecycleStatus, MediaListQuery, MediaOwnerType, MediaRecord, PriceListItemListQuery,
+    PriceListItemRecord, PriceListListQuery, PriceListRecord, PriceListRetrieveQuery,
     ProductAttributesRetrieveQuery, ProductAttributesWrite, ProductSkuListQuery,
     ProductSkuRetrieveQuery, ProductSpuListQuery, ProductSpuRetrieveQuery, ProductStatus,
     PublishSpuCommand, ReplaceProductAttributesCommand, SkuAxisRecord, SkuRecord,
     SpuAttributeRecord, SpuRecord, StaleVersion, UpdateAttributeCommand,
-    UpdateAttributeValueCommand, UpdateCategoryAttributeCommand, UpdateCategoryCommand,
-    UpdateMediaCommand, UpdatePriceListCommand, UpdatePriceListItemCommand,
+    UpdateAttributeValueCommand, UpdateBrandCommand, UpdateCategoryAttributeCommand,
+    UpdateCategoryCommand, UpdateMediaCommand, UpdatePriceListCommand, UpdatePriceListItemCommand,
     UpdateProductSkuCommand, UpdateProductSpuCommand,
 };
 use serde_json::Value;
@@ -103,9 +105,9 @@ macro_rules! price_list_columns {
 
 macro_rules! spu_columns {
     () => {
-        "id, tenant_id, organization_id, spu_no, category_id, name, title, subtitle, description, \
-         product_type, model_no, barcode, weight_gram, volume_ml, tax_class_code, status, \
-         sales_status, published_at, version, created_at, updated_at"
+        "id, tenant_id, organization_id, spu_no, category_id, brand_id, name, title, subtitle, \
+         description, product_type, model_no, barcode, weight_gram, volume_ml, tax_class_code, \
+         status, sales_status, published_at, version, created_at, updated_at"
     };
 }
 
@@ -113,8 +115,10 @@ macro_rules! sku_columns {
     () => {
         "id, tenant_id, organization_id, spu_id, sku_no, variant_signature, name, title, \
          currency_code, price_scale, sale_price_minor, list_price_minor, cost_price_minor, \
-         barcode, weight_gram, fulfillment_type, inventory_tracking, inventory_policy, status, \
-         sales_status, metadata, published_at, version, created_at, updated_at"
+         barcode, weight_gram, min_order_quantity, max_order_quantity, step_quantity, \
+         package_unit, units_per_package, fulfillment_type, inventory_tracking, \
+         inventory_policy, status, sales_status, metadata, published_at, version, \
+         created_at, updated_at"
     };
 }
 
@@ -590,6 +594,83 @@ const SOFT_DELETE_PRICE_LIST_ITEM_SQL: &str = "UPDATE commerce_price_list_item
 const PROBE_PRICE_LIST_ITEM_VERSION_SQL: &str = "SELECT version FROM commerce_price_list_item
      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL";
 
+// ------------------------------------------------------- brands
+//
+// A brand is master data the SPU points at. The table is a plain reference
+// entity: a business key, a display name, an optional description, the shared
+// lifecycle vocabulary, and the optimistic-concurrency version every guarded
+// write compares. Logo media lives in `commerce_product_media` with
+// `owner_type = 'brand' / media_role = 'logo'` — the same slot machinery as every
+// other owner — so nothing media-shaped is stored here.
+
+macro_rules! brand_columns {
+    () => {
+        "id, tenant_id, organization_id, brand_no, name, description, status, sort_order, version, created_at, updated_at"
+    };
+}
+
+const LIST_BRANDS_SQL: &str = concat!(
+    "SELECT ",
+    brand_columns!(),
+    " FROM commerce_product_brand
+     WHERE tenant_id = $1
+       AND deleted_at IS NULL
+       AND ($2::BIGINT IS NULL OR organization_id = $2)
+       AND ($3::TEXT IS NULL OR status = $3)
+     ORDER BY sort_order ASC, id ASC
+     LIMIT $4 OFFSET $5"
+);
+
+const COUNT_BRANDS_SQL: &str = "SELECT COUNT(*) FROM commerce_product_brand
+     WHERE tenant_id = $1
+       AND deleted_at IS NULL
+       AND ($2::BIGINT IS NULL OR organization_id = $2)
+       AND ($3::TEXT IS NULL OR status = $3)";
+
+const RETRIEVE_BRAND_SQL: &str = concat!(
+    "SELECT ",
+    brand_columns!(),
+    " FROM commerce_product_brand
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL"
+);
+
+const INSERT_BRAND_SQL: &str = concat!(
+    "INSERT INTO commerce_product_brand
+         (id, tenant_id, organization_id, brand_no, name, description, sort_order, status, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8)
+     RETURNING ",
+    brand_columns!()
+);
+
+const UPDATE_BRAND_SQL: &str = concat!(
+    "UPDATE commerce_product_brand
+     SET name = $1,
+         description = $2,
+         sort_order = $3,
+         status = $4,
+         updated_by = $5,
+         version = version + 1,
+         updated_at = NOW()
+     WHERE tenant_id = $6 AND id = $7 AND deleted_at IS NULL AND version = $8
+     RETURNING ",
+    brand_columns!()
+);
+
+const LOCK_BRAND_SQL: &str = concat!(
+    "SELECT ",
+    brand_columns!(),
+    " FROM commerce_product_brand
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+     FOR UPDATE"
+);
+
+const SOFT_DELETE_BRAND_SQL: &str = "UPDATE commerce_product_brand
+     SET deleted_at = NOW(), status = 'inactive', deleted_by = $4, version = version + 1, updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND version = $3";
+
+const PROBE_BRAND_VERSION_SQL: &str = "SELECT version FROM commerce_product_brand
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL";
+
 // ------------------------------------------------------- category attribute bindings
 //
 // A binding is the category template entry: which attribute a category uses, in which role, and
@@ -653,7 +734,8 @@ macro_rules! spu_list_select {
     () => {
         "SELECT commerce_product_spu.id, commerce_product_spu.tenant_id, \
          commerce_product_spu.organization_id, commerce_product_spu.spu_no, \
-         commerce_product_spu.category_id, commerce_product_spu.name, \
+         commerce_product_spu.category_id, commerce_product_spu.brand_id, \
+         commerce_product_spu.name, \
          commerce_product_spu.title, commerce_product_spu.subtitle, \
          commerce_product_spu.description, commerce_product_spu.product_type, \
          commerce_product_spu.status, commerce_product_spu.sales_status, \
@@ -695,8 +777,9 @@ const LIST_SPUS_DEFAULT_SQL: &str = concat!(
 ",
     spu_search_filter!("$3"),
     "       AND ($4::BIGINT IS NULL OR commerce_product_spu.category_id = $4)
-       AND ($5::TEXT IS NULL OR commerce_product_spu.product_type = $5)
-       AND ($6::TEXT IS NULL OR commerce_product_spu.status = $6)
+       AND ($5::BIGINT IS NULL OR commerce_product_spu.brand_id = $5)
+       AND ($6::TEXT IS NULL OR commerce_product_spu.product_type = $6)
+       AND ($7::TEXT IS NULL OR commerce_product_spu.status = $7)
      ORDER BY commerce_product_spu.created_at DESC, commerce_product_spu.id DESC
      LIMIT $7 OFFSET $8"
 );
@@ -716,8 +799,9 @@ const LIST_SPUS_PRICE_ASC_SQL: &str = concat!(
 ",
     spu_search_filter!("$3"),
     "       AND ($4::BIGINT IS NULL OR commerce_product_spu.category_id = $4)
-       AND ($5::TEXT IS NULL OR commerce_product_spu.product_type = $5)
-       AND ($6::TEXT IS NULL OR commerce_product_spu.status = $6)
+       AND ($5::BIGINT IS NULL OR commerce_product_spu.brand_id = $5)
+       AND ($6::TEXT IS NULL OR commerce_product_spu.product_type = $6)
+       AND ($7::TEXT IS NULL OR commerce_product_spu.status = $7)
      GROUP BY commerce_product_spu.id
      ORDER BY MIN(sku.sale_price_minor) ASC NULLS LAST, commerce_product_spu.id ASC
      LIMIT $7 OFFSET $8"
@@ -738,8 +822,9 @@ const LIST_SPUS_PRICE_DESC_SQL: &str = concat!(
 ",
     spu_search_filter!("$3"),
     "       AND ($4::BIGINT IS NULL OR commerce_product_spu.category_id = $4)
-       AND ($5::TEXT IS NULL OR commerce_product_spu.product_type = $5)
-       AND ($6::TEXT IS NULL OR commerce_product_spu.status = $6)
+       AND ($5::BIGINT IS NULL OR commerce_product_spu.brand_id = $5)
+       AND ($6::TEXT IS NULL OR commerce_product_spu.product_type = $6)
+       AND ($7::TEXT IS NULL OR commerce_product_spu.status = $7)
      GROUP BY commerce_product_spu.id
      ORDER BY MIN(sku.sale_price_minor) DESC NULLS LAST, commerce_product_spu.id ASC
      LIMIT $7 OFFSET $8"
@@ -753,8 +838,9 @@ const COUNT_SPUS_SQL: &str = concat!(
 ",
     spu_search_filter!("$3"),
     "       AND ($4::BIGINT IS NULL OR category_id = $4)
-       AND ($5::TEXT IS NULL OR product_type = $5)
-       AND ($6::TEXT IS NULL OR status = $6)"
+       AND ($5::BIGINT IS NULL OR brand_id = $5)
+       AND ($6::TEXT IS NULL OR product_type = $6)
+       AND ($7::TEXT IS NULL OR status = $7)"
 );
 
 const RETRIEVE_SPU_SQL: &str = concat!(
@@ -766,10 +852,10 @@ const RETRIEVE_SPU_SQL: &str = concat!(
 
 const INSERT_SPU_SQL: &str = concat!(
     "INSERT INTO commerce_product_spu
-         (id, tenant_id, organization_id, spu_no, category_id, name, title, subtitle, description,
-          product_type, model_no, barcode, weight_gram, volume_ml, tax_class_code, status,
-          sales_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft', 'inactive')
+         (id, tenant_id, organization_id, spu_no, category_id, brand_id, name, title, subtitle,
+          description, product_type, model_no, barcode, weight_gram, volume_ml, tax_class_code,
+          created_by, status, sales_status)
+     VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'draft', 'inactive')
      RETURNING ",
     spu_columns!()
 );
@@ -798,20 +884,22 @@ const UPDATE_SPU_SQL: &str = concat!(
          subtitle = COALESCE($2::TEXT, subtitle),
          description = CASE WHEN $3::BOOLEAN THEN $4::TEXT ELSE description END,
          category_id = COALESCE($5, category_id),
-         model_no = $6,
-         barcode = $7,
-         weight_gram = $8,
-         volume_ml = $9,
-         tax_class_code = $10,
-         status = COALESCE($11::TEXT, status),
-         sales_status = CASE WHEN COALESCE($11::TEXT, status) = 'active' THEN 'active'
+         brand_id = $6,
+         model_no = $7,
+         barcode = $8,
+         weight_gram = $9,
+         volume_ml = $10,
+         tax_class_code = $11,
+         status = COALESCE($12::TEXT, status),
+         sales_status = CASE WHEN COALESCE($12::TEXT, status) = 'active' THEN 'active'
                              ELSE 'inactive' END,
-         published_at = CASE WHEN COALESCE($11::TEXT, status) = 'active'
+         published_at = CASE WHEN COALESCE($12::TEXT, status) = 'active'
                              THEN COALESCE(published_at, NOW())
                              ELSE published_at END,
+         updated_by = $16,
          version = version + 1,
          updated_at = NOW()
-     WHERE tenant_id = $12 AND id = $13 AND deleted_at IS NULL AND version = $14
+     WHERE tenant_id = $13 AND id = $14 AND deleted_at IS NULL AND version = $15
      RETURNING ",
     spu_columns!()
 );
@@ -897,10 +985,11 @@ const INSERT_SKU_SQL: &str = concat!(
     "INSERT INTO commerce_product_sku
          (id, tenant_id, organization_id, spu_id, sku_no, variant_signature, name, title,
           currency_code, price_scale, list_price_minor, sale_price_minor, cost_price_minor,
-          barcode, weight_gram, fulfillment_type, inventory_tracking, inventory_policy, metadata,
-          status, sales_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-             'draft', 'inactive')
+          barcode, weight_gram, min_order_quantity, max_order_quantity, step_quantity,
+          package_unit, units_per_package, fulfillment_type, inventory_tracking,
+          inventory_policy, metadata, created_by, status, sales_status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+             $19, $20, $21, $22, $23, $24, $25, 'draft', 'inactive')
      RETURNING ",
     sku_columns!()
 );
@@ -929,21 +1018,27 @@ const UPDATE_SKU_SQL: &str = concat!(
          cost_price_minor = $5,
          barcode = $6,
          weight_gram = $7,
-         currency_code = $8,
-         price_scale = $9,
-         fulfillment_type = COALESCE($10::TEXT, fulfillment_type),
-         inventory_tracking = COALESCE($11::TEXT, inventory_tracking),
-         inventory_policy = COALESCE($12::TEXT, inventory_policy),
-         metadata = COALESCE($17::JSONB, metadata),
-         status = COALESCE($13::TEXT, status),
-         sales_status = CASE WHEN COALESCE($13::TEXT, status) = 'active' THEN 'active'
+         min_order_quantity = $8,
+         max_order_quantity = $9,
+         step_quantity = $10,
+         package_unit = $11,
+         units_per_package = $12,
+         currency_code = $13,
+         price_scale = $14,
+         fulfillment_type = COALESCE($15::TEXT, fulfillment_type),
+         inventory_tracking = COALESCE($16::TEXT, inventory_tracking),
+         inventory_policy = COALESCE($17::TEXT, inventory_policy),
+         metadata = COALESCE($19::JSONB, metadata),
+         status = COALESCE($18::TEXT, status),
+         sales_status = CASE WHEN COALESCE($18::TEXT, status) = 'active' THEN 'active'
                              ELSE 'inactive' END,
-         published_at = CASE WHEN COALESCE($13::TEXT, status) = 'active'
+         published_at = CASE WHEN COALESCE($18::TEXT, status) = 'active'
                              THEN COALESCE(published_at, NOW())
                              ELSE published_at END,
+         updated_by = $20,
          version = version + 1,
          updated_at = NOW()
-     WHERE tenant_id = $14 AND id = $15 AND deleted_at IS NULL AND version = $16
+     WHERE tenant_id = $21 AND id = $22 AND deleted_at IS NULL AND version = $23
      RETURNING ",
     sku_columns!()
 );
@@ -1084,6 +1179,8 @@ const OWNER_SPU_EXISTS_SQL: &str =
 const OWNER_SKU_EXISTS_SQL: &str =
     "SELECT EXISTS (SELECT 1 FROM commerce_product_sku WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL)";
 
+const OWNER_BRAND_EXISTS_SQL: &str = "SELECT EXISTS (SELECT 1 FROM commerce_product_brand WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL)";
+
 const OWNER_CATEGORY_EXISTS_SQL: &str =
     "SELECT EXISTS (SELECT 1 FROM commerce_product_category WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL)";
 
@@ -1196,7 +1293,7 @@ fn spu_list_sql(sort: Option<&str>) -> &'static str {
 /// A free function as well as a method, because the axis writer and the media writer need an id
 /// without owning the store: they run inside a transaction the store opened, and passing the
 /// generator is narrower than passing `&self`.
-fn next_snowflake(ids: &Arc<dyn IdGenerator>) -> Result<i64, CommerceServiceError> {
+pub(crate) fn next_snowflake(ids: &Arc<dyn IdGenerator>) -> Result<i64, CommerceServiceError> {
     let raw = ids
         .next_id()
         .map_err(|error| CommerceServiceError::storage(format!("id generation failed: {error}")))?;
@@ -1278,7 +1375,16 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to list categories", error))?;
 
-        Ok(rows.iter().map(map_category_row).collect())
+        let mut categories: Vec<CategoryRecord> = rows.iter().map(map_category_row).collect();
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        attach_category_locale(
+            &self.pool,
+            tenant_id,
+            query.locale.as_deref(),
+            &mut categories,
+        )
+        .await?;
+        Ok(categories)
     }
 
     pub async fn count_categories(
@@ -1590,7 +1696,16 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to list attributes", error))?;
 
-        Ok(rows.iter().map(map_attribute_row).collect())
+        let mut attributes: Vec<AttributeRecord> = rows.iter().map(map_attribute_row).collect();
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        attach_attribute_locale(
+            &self.pool,
+            tenant_id,
+            query.locale.as_deref(),
+            &mut attributes,
+        )
+        .await?;
+        Ok(attributes)
     }
 
     pub async fn retrieve_attribute(
@@ -1603,7 +1718,7 @@ impl PostgresCommerceCatalogStore {
             .fetch_optional(&self.pool)
             .await
             .map_err(|error| store_error("failed to retrieve attribute", error))
-        .map(|row| row.map(|row| map_attribute_row(&row)))
+            .map(|row| row.map(|row| map_attribute_row(&row)))
     }
 
     pub async fn count_attributes(
@@ -1776,7 +1891,12 @@ impl PostgresCommerceCatalogStore {
             .await
             .map_err(|error| store_error("failed to list attribute values", error))?;
 
-        Ok(rows.iter().map(map_attribute_value_row).collect())
+        let mut values: Vec<AttributeValueRecord> =
+            rows.iter().map(map_attribute_value_row).collect();
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        attach_attribute_value_locale(&self.pool, tenant_id, query.locale.as_deref(), &mut values)
+            .await?;
+        Ok(values)
     }
 
     pub async fn count_attribute_values(
@@ -2811,6 +2931,7 @@ impl PostgresCommerceCatalogStore {
                 "category_id",
                 query.category_id.as_deref(),
             )?)
+            .bind(parse_optional_id("brand_id", query.brand_id.as_deref())?)
             .bind(query.product_type.as_deref())
             .bind(query.status.as_deref())
             .bind(limit)
@@ -2822,6 +2943,7 @@ impl PostgresCommerceCatalogStore {
         let mut spus: Vec<SpuRecord> = rows.iter().map(map_spu_row).collect();
         let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
         attach_spu_attributes(&self.pool, tenant_id, &mut spus).await?;
+        attach_spu_locale(&self.pool, tenant_id, query.locale.as_deref(), &mut spus).await?;
         Ok(spus)
     }
 
@@ -2840,6 +2962,7 @@ impl PostgresCommerceCatalogStore {
                 "category_id",
                 query.category_id.as_deref(),
             )?)
+            .bind(parse_optional_id("brand_id", query.brand_id.as_deref())?)
             .bind(query.product_type.as_deref())
             .bind(query.status.as_deref())
             .fetch_one(&self.pool)
@@ -2889,6 +3012,7 @@ impl PostgresCommerceCatalogStore {
             .bind(organization_id)
             .bind(&command.spu_no)
             .bind(category_id)
+            .bind(parse_optional_id("brand_id", command.brand_id.as_deref())?)
             .bind(&command.title)
             .bind(command.subtitle.as_deref())
             .bind(command.description.as_deref())
@@ -2943,6 +3067,15 @@ impl PostgresCommerceCatalogStore {
             }));
         }
 
+        let brand_id = match &command.brand_id {
+            Some(decided) => decided
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| parse_id("brand_id", value))
+                .transpose()?,
+            None => optional_bigint_cell(&current, "brand_id"),
+        };
         let model_no = match &command.model_no {
             Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
             None => optional_string_cell(&current, "model_no"),
@@ -2973,6 +3106,7 @@ impl PostgresCommerceCatalogStore {
                 "category_id",
                 command.category_id.as_deref(),
             )?)
+            .bind(brand_id)
             .bind(model_no)
             .bind(barcode)
             .bind(weight_gram)
@@ -3219,6 +3353,7 @@ impl PostgresCommerceCatalogStore {
         let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
         attach_sku_axes(&self.pool, tenant_id, &mut skus).await?;
         fill_currency_symbols(&self.pool, &mut skus).await?;
+        attach_sku_locale(&self.pool, tenant_id, query.locale.as_deref(), &mut skus).await?;
         Ok(skus)
     }
 
@@ -3326,6 +3461,11 @@ impl PostgresCommerceCatalogStore {
             .bind(command.cost_price_minor)
             .bind(command.barcode.as_deref().map(str::trim))
             .bind(command.weight_gram)
+            .bind(command.min_order_quantity.unwrap_or(1))
+            .bind(command.max_order_quantity)
+            .bind(command.step_quantity.unwrap_or(1))
+            .bind(command.package_unit.as_deref().map(str::trim))
+            .bind(command.units_per_package)
             .bind(command.fulfillment_type.as_storage_str())
             .bind(command.inventory_tracking.as_storage_str())
             .bind(command.inventory_policy.as_storage_str())
@@ -3406,6 +3546,21 @@ impl PostgresCommerceCatalogStore {
         let current_weight: Option<i64> = current
             .try_get("weight_gram")
             .map_err(|error| store_error("failed to read sku weight", error))?;
+        let current_min_order: i64 = current
+            .try_get("min_order_quantity")
+            .map_err(|error| store_error("failed to read sku min order quantity", error))?;
+        let current_max_order: Option<i64> = current
+            .try_get("max_order_quantity")
+            .map_err(|error| store_error("failed to read sku max order quantity", error))?;
+        let current_step: i64 = current
+            .try_get("step_quantity")
+            .map_err(|error| store_error("failed to read sku step quantity", error))?;
+        let current_package_unit: Option<String> = current
+            .try_get("package_unit")
+            .map_err(|error| store_error("failed to read sku package unit", error))?;
+        let current_units_per_package: Option<i64> = current
+            .try_get("units_per_package")
+            .map_err(|error| store_error("failed to read sku units per package", error))?;
         let current_tracking: String = current
             .try_get("inventory_tracking")
             .map_err(|error| store_error("failed to read sku tracking", error))?;
@@ -3485,6 +3640,47 @@ impl PostgresCommerceCatalogStore {
             ));
         }
 
+        // Trade constraints: the NOT NULL defaults are restated as values; the nullable
+        // cap/package facts are three-state against the locked row.
+        let min_order_quantity = command.min_order_quantity.unwrap_or(current_min_order);
+        if min_order_quantity < 1 {
+            return Err(CommerceServiceError::validation(
+                "min_order_quantity must be at least 1: it is what a single order buys",
+            ));
+        }
+        let max_order_quantity = match command.max_order_quantity {
+            Some(decided) => decided,
+            None => current_max_order,
+        };
+        if let Some(max) = max_order_quantity {
+            if max < min_order_quantity {
+                return Err(CommerceServiceError::validation(
+                    "max_order_quantity must not be below min_order_quantity",
+                ));
+            }
+        }
+        let step_quantity = command.step_quantity.unwrap_or(current_step);
+        if step_quantity < 1 {
+            return Err(CommerceServiceError::validation(
+                "step_quantity must be at least 1: it is what the orderable quantity moves in",
+            ));
+        }
+        let package_unit = match &command.package_unit {
+            Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
+            None => current_package_unit,
+        };
+        let units_per_package = match command.units_per_package {
+            Some(decided) => decided,
+            None => current_units_per_package,
+        };
+        if let Some(units) = units_per_package {
+            if units < 1 {
+                return Err(CommerceServiceError::validation(
+                    "units_per_package must be at least 1",
+                ));
+            }
+        }
+
         // `None` keeps the stored axes, `Some(vec![])` clears them, anything else replaces them.
         let mut replaced_axes: Option<Vec<SkuAxisRecord>> = None;
         if let Some(value_ids) = command.attribute_value_ids.as_deref() {
@@ -3531,6 +3727,11 @@ impl PostgresCommerceCatalogStore {
             .bind(cost_price_minor)
             .bind(barcode)
             .bind(weight_gram)
+            .bind(min_order_quantity)
+            .bind(max_order_quantity)
+            .bind(step_quantity)
+            .bind(package_unit)
+            .bind(units_per_package)
             .bind(&effective_currency)
             .bind(currency.scale())
             .bind(command.fulfillment_type.map(|value| value.as_storage_str()))
@@ -3544,8 +3745,8 @@ impl PostgresCommerceCatalogStore {
             .bind(tenant_id)
             .bind(id)
             .bind(command.expected_version)
-            .bind(command.metadata.as_ref())
             .bind(&command.actor)
+            .bind(command.metadata.as_ref())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(|error| store_error("failed to update sku", error))?;
@@ -3816,6 +4017,193 @@ impl PostgresCommerceCatalogStore {
             .await
             .map(GuardedWrite::StaleVersion);
         }
+        Ok(GuardedWrite::Applied(()))
+    }
+    // ------------------------------------------------------- brands
+
+    pub async fn list_brands(
+        &self,
+        query: &BrandListQuery,
+    ) -> Result<Vec<BrandRecord>, CommerceServiceError> {
+        let limit = query.page_size.unwrap_or(20).min(200);
+        let offset = (query.page.unwrap_or(1) - 1).max(0) * limit;
+
+        let rows = sqlx::query(LIST_BRANDS_SQL)
+            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(parse_optional_id(
+                "organization_id",
+                query.organization_id.as_deref(),
+            )?)
+            .bind(query.status.as_deref())
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to list brands", error))?;
+
+        let mut brands: Vec<BrandRecord> = rows.iter().map(map_brand_row).collect();
+        let tenant_id = parse_id("tenant_id", &query.tenant_id)?;
+        attach_brand_locale(&self.pool, tenant_id, query.locale.as_deref(), &mut brands).await?;
+        Ok(brands)
+    }
+
+    pub async fn count_brands(&self, query: &BrandListQuery) -> Result<i64, CommerceServiceError> {
+        sqlx::query_scalar(COUNT_BRANDS_SQL)
+            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(parse_optional_id(
+                "organization_id",
+                query.organization_id.as_deref(),
+            )?)
+            .bind(query.status.as_deref())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to count brands", error))
+    }
+
+    pub async fn retrieve_brand(
+        &self,
+        query: &BrandRetrieveQuery,
+    ) -> Result<Option<BrandRecord>, CommerceServiceError> {
+        sqlx::query(RETRIEVE_BRAND_SQL)
+            .bind(parse_id("tenant_id", &query.tenant_id)?)
+            .bind(parse_id("brand_id", &query.brand_id)?)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to retrieve brand", error))
+            .map(|row| row.map(|row| map_brand_row(&row)))
+    }
+
+    /// Creates one brand.
+    ///
+    /// The business key is unique per tenant while the row is live
+    /// (`uk_commerce_product_brand_tenant_no`); a duplicate surfaces as a `409`
+    /// naming the business key, the same rule every other create follows.
+    pub async fn create_brand(
+        &self,
+        command: &CreateBrandCommand,
+    ) -> Result<BrandRecord, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let organization_id = parse_id("organization_id", &command.organization_id)?;
+        let id = self.next_id()?;
+
+        let row = sqlx::query(INSERT_BRAND_SQL)
+            .bind(id)
+            .bind(tenant_id)
+            .bind(organization_id)
+            .bind(command.brand_no.trim())
+            .bind(command.name.trim())
+            .bind(command.description.as_deref().map(str::trim))
+            .bind(command.sort_order)
+            .bind(&command.actor)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to create brand", error))?;
+
+        Ok(map_brand_row(&row))
+    }
+
+    /// Updates one brand's mutable surface.
+    ///
+    /// `description` is nullable and three-state, so the update follows the
+    /// lock-decide-write shape: lock the row, decide each field against the
+    /// stored values, write the decided values in one guarded statement.
+    pub async fn update_brand(
+        &self,
+        command: &UpdateBrandCommand,
+    ) -> Result<GuardedWrite<BrandRecord>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let brand_id = parse_id("brand_id", &command.brand_id)?;
+
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| store_error("failed to open brand update transaction", error))?;
+
+        let Some(current) =
+            lock_live_row(&mut transaction, LOCK_BRAND_SQL, tenant_id, brand_id).await?
+        else {
+            return Err(CommerceServiceError::not_found("brand was not found"));
+        };
+        let actual = bigint_cell(&current, "version");
+        if actual != command.expected_version {
+            return Ok(GuardedWrite::StaleVersion(StaleVersion {
+                expected: command.expected_version,
+                actual,
+            }));
+        }
+
+        let name = match command.name.as_deref() {
+            Some(name) => name.trim().to_owned(),
+            None => string_cell(&current, "name"),
+        };
+        let description = match &command.description {
+            Some(decided) => decided.as_deref().map(str::trim).map(str::to_owned),
+            None => optional_string_cell(&current, "description"),
+        };
+        let sort_order = command
+            .sort_order
+            .unwrap_or_else(|| bigint_cell(&current, "sort_order"));
+        let status = command
+            .status
+            .map(|status| status.as_storage_str().to_owned())
+            .unwrap_or_else(|| string_cell(&current, "status"));
+
+        let row = sqlx::query(UPDATE_BRAND_SQL)
+            .bind(&name)
+            .bind(description)
+            .bind(sort_order)
+            .bind(&status)
+            .bind(&command.actor)
+            .bind(tenant_id)
+            .bind(brand_id)
+            .bind(command.expected_version)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| store_error("failed to update brand", error))?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(|error| store_error("failed to commit brand update", error))?;
+
+        Ok(GuardedWrite::Applied(map_brand_row(&row)))
+    }
+
+    /// Retires one brand.
+    ///
+    /// Products pointing at the brand keep their reference: the foreign key
+    /// has no cascade and the row survives as history.
+    pub async fn delete_brand(
+        &self,
+        command: &DeleteBrandCommand,
+    ) -> Result<GuardedWrite<()>, CommerceServiceError> {
+        let tenant_id = parse_id("tenant_id", &command.tenant_id)?;
+        let brand_id = parse_id("brand_id", &command.brand_id)?;
+
+        let affected = sqlx::query(SOFT_DELETE_BRAND_SQL)
+            .bind(tenant_id)
+            .bind(brand_id)
+            .bind(command.expected_version)
+            .bind(&command.actor)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| store_error("failed to delete brand", error))?
+            .rows_affected();
+
+        if affected == 0 {
+            return classify_guarded_miss(
+                &self.pool,
+                PROBE_BRAND_VERSION_SQL,
+                tenant_id,
+                brand_id,
+                command.expected_version,
+                "brand",
+            )
+            .await
+            .map(GuardedWrite::StaleVersion);
+        }
+
         Ok(GuardedWrite::Applied(()))
     }
 }
@@ -4351,6 +4739,196 @@ async fn load_currency_symbols(
     Ok(symbols)
 }
 
+// ------------------------------------------------------------------ locale overrides
+
+/// Applies one locale's translation rows to a page of categories.
+async fn attach_category_locale(
+    pool: &PgPool,
+    tenant_id: i64,
+    locale: Option<&str>,
+    categories: &mut [CategoryRecord],
+) -> Result<(), CommerceServiceError> {
+    if categories.is_empty() || crate::postgres_translations::is_default_locale(locale) {
+        return Ok(());
+    }
+    let locale = locale.unwrap_or_default().trim();
+    let ids: Vec<i64> = categories.iter().map(|c| c.id).collect();
+    let grouped = crate::postgres_translations::load_locale_overrides(
+        pool,
+        crate::postgres_translations::LOAD_CATEGORY_OVERRIDES_SQL,
+        tenant_id,
+        locale,
+        &ids,
+    )
+    .await?;
+    for category in categories.iter_mut() {
+        for (field, value) in crate::postgres_translations::overrides_for(&grouped, category.id) {
+            if field == "name" {
+                category.name = value.to_owned();
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Applies one locale's translation rows to a page of attributes.
+async fn attach_attribute_locale(
+    pool: &PgPool,
+    tenant_id: i64,
+    locale: Option<&str>,
+    attributes: &mut [AttributeRecord],
+) -> Result<(), CommerceServiceError> {
+    if attributes.is_empty() || crate::postgres_translations::is_default_locale(locale) {
+        return Ok(());
+    }
+    let locale = locale.unwrap_or_default().trim();
+    let ids: Vec<i64> = attributes.iter().map(|a| a.id).collect();
+    let grouped = crate::postgres_translations::load_locale_overrides(
+        pool,
+        crate::postgres_translations::LOAD_ATTRIBUTE_OVERRIDES_SQL,
+        tenant_id,
+        locale,
+        &ids,
+    )
+    .await?;
+    for attribute in attributes.iter_mut() {
+        for (field, value) in crate::postgres_translations::overrides_for(&grouped, attribute.id) {
+            if field == "name" {
+                attribute.name = value.to_owned();
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Applies one locale's translation rows to a page of dictionary values.
+async fn attach_attribute_value_locale(
+    pool: &PgPool,
+    tenant_id: i64,
+    locale: Option<&str>,
+    values: &mut [AttributeValueRecord],
+) -> Result<(), CommerceServiceError> {
+    if values.is_empty() || crate::postgres_translations::is_default_locale(locale) {
+        return Ok(());
+    }
+    let locale = locale.unwrap_or_default().trim();
+    let ids: Vec<i64> = values.iter().map(|v| v.id).collect();
+    let grouped = crate::postgres_translations::load_locale_overrides(
+        pool,
+        crate::postgres_translations::LOAD_ATTRIBUTE_VALUE_OVERRIDES_SQL,
+        tenant_id,
+        locale,
+        &ids,
+    )
+    .await?;
+    for value in values.iter_mut() {
+        for (field, text) in crate::postgres_translations::overrides_for(&grouped, value.id) {
+            if field == "display_value" {
+                value.display_value = text.to_owned();
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Applies one locale's translation rows to a page of products.
+async fn attach_spu_locale(
+    pool: &PgPool,
+    tenant_id: i64,
+    locale: Option<&str>,
+    spus: &mut [SpuRecord],
+) -> Result<(), CommerceServiceError> {
+    if spus.is_empty() || crate::postgres_translations::is_default_locale(locale) {
+        return Ok(());
+    }
+    let locale = locale.unwrap_or_default().trim();
+    let ids: Vec<i64> = spus.iter().map(|s| s.id).collect();
+    let grouped = crate::postgres_translations::load_locale_overrides(
+        pool,
+        crate::postgres_translations::LOAD_SPU_OVERRIDES_SQL,
+        tenant_id,
+        locale,
+        &ids,
+    )
+    .await?;
+    for spu in spus.iter_mut() {
+        for (field, value) in crate::postgres_translations::overrides_for(&grouped, spu.id) {
+            match field {
+                "name" => spu.name = value.to_owned(),
+                "title" => spu.title = Some(value.to_owned()),
+                "subtitle" => spu.subtitle = Some(value.to_owned()),
+                "description" => spu.description = Some(value.to_owned()),
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Applies one locale's translation rows to a page of SKUs.
+async fn attach_sku_locale(
+    pool: &PgPool,
+    tenant_id: i64,
+    locale: Option<&str>,
+    skus: &mut [SkuRecord],
+) -> Result<(), CommerceServiceError> {
+    if skus.is_empty() || crate::postgres_translations::is_default_locale(locale) {
+        return Ok(());
+    }
+    let locale = locale.unwrap_or_default().trim();
+    let ids: Vec<i64> = skus.iter().map(|s| s.id).collect();
+    let grouped = crate::postgres_translations::load_locale_overrides(
+        pool,
+        crate::postgres_translations::LOAD_SKU_OVERRIDES_SQL,
+        tenant_id,
+        locale,
+        &ids,
+    )
+    .await?;
+    for sku in skus.iter_mut() {
+        for (field, value) in crate::postgres_translations::overrides_for(&grouped, sku.id) {
+            match field {
+                "name" => sku.name = Some(value.to_owned()),
+                "title" => sku.title = Some(value.to_owned()),
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Applies one locale's translation rows to a page of brands.
+async fn attach_brand_locale(
+    pool: &PgPool,
+    tenant_id: i64,
+    locale: Option<&str>,
+    brands: &mut [BrandRecord],
+) -> Result<(), CommerceServiceError> {
+    if brands.is_empty() || crate::postgres_translations::is_default_locale(locale) {
+        return Ok(());
+    }
+    let locale = locale.unwrap_or_default().trim();
+    let ids: Vec<i64> = brands.iter().map(|b| b.id).collect();
+    let grouped = crate::postgres_translations::load_locale_overrides(
+        pool,
+        crate::postgres_translations::LOAD_BRAND_OVERRIDES_SQL,
+        tenant_id,
+        locale,
+        &ids,
+    )
+    .await?;
+    for brand in brands.iter_mut() {
+        for (field, value) in crate::postgres_translations::overrides_for(&grouped, brand.id) {
+            match field {
+                "name" => brand.name = value.to_owned(),
+                "description" => brand.description = Some(value.to_owned()),
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Locks the live row a guarded write targets.
 ///
 /// The lock-decide-write shape needs the row's stored values before it can decide what to write, and
@@ -4379,6 +4957,13 @@ async fn lock_live_row(
 /// points at one of four tables", and four nullable FK columns would let one row claim two owners
 /// and force every read to guess which one is live. Verifying the owner against the table its
 /// `owner_type` names is therefore the only place this constraint exists.
+/// Refuses an attachment whose owner does not exist.
+///
+/// `commerce_product_media.owner_id` carries no foreign key: PostgreSQL cannot express "this BIGINT
+/// points at one of four tables", and four nullable FK columns would let one row claim two owners
+/// and force every read to guess which one is live. Verifying the owner against the table its
+/// `owner_type` names is therefore the only place this constraint exists.
+
 async fn ensure_media_owner(
     transaction: &mut Transaction<'_, Postgres>,
     tenant_id: i64,
@@ -4390,6 +4975,7 @@ async fn ensure_media_owner(
         MediaOwnerType::Sku => OWNER_SKU_EXISTS_SQL,
         MediaOwnerType::Category => OWNER_CATEGORY_EXISTS_SQL,
         MediaOwnerType::AttributeValue => OWNER_ATTRIBUTE_VALUE_EXISTS_SQL,
+        MediaOwnerType::Brand => OWNER_BRAND_EXISTS_SQL,
     };
 
     let exists: bool = sqlx::query_scalar(statement)
@@ -4515,6 +5101,7 @@ fn map_spu_row(row: &sqlx::postgres::PgRow) -> SpuRecord {
         organization_id: bigint_cell(row, "organization_id"),
         spu_no: string_cell(row, "spu_no"),
         category_id: bigint_cell(row, "category_id"),
+        brand_id: optional_bigint_cell(row, "brand_id"),
         name: string_cell(row, "name"),
         title: optional_string_cell(row, "title"),
         subtitle: optional_string_cell(row, "subtitle"),
@@ -4569,6 +5156,11 @@ pub(crate) fn map_sku_row(row: &sqlx::postgres::PgRow) -> Result<SkuRecord, Comm
         cost_price_minor: optional_bigint_cell(row, "cost_price_minor"),
         barcode: optional_string_cell(row, "barcode"),
         weight_gram: optional_bigint_cell(row, "weight_gram"),
+        min_order_quantity: bigint_cell(row, "min_order_quantity"),
+        max_order_quantity: optional_bigint_cell(row, "max_order_quantity"),
+        step_quantity: bigint_cell(row, "step_quantity"),
+        package_unit: optional_string_cell(row, "package_unit"),
+        units_per_package: optional_bigint_cell(row, "units_per_package"),
         fulfillment_type: string_cell(row, "fulfillment_type"),
         inventory_tracking: string_cell(row, "inventory_tracking"),
         inventory_policy: string_cell(row, "inventory_policy"),
@@ -4641,6 +5233,22 @@ fn map_media_row(row: &sqlx::postgres::PgRow) -> Result<MediaRecord, CommerceSer
         created_at: timestamp_cell(row, "created_at"),
         updated_at: timestamp_cell(row, "updated_at"),
     })
+}
+
+fn map_brand_row(row: &sqlx::postgres::PgRow) -> BrandRecord {
+    BrandRecord {
+        id: bigint_cell(row, "id"),
+        tenant_id: bigint_cell(row, "tenant_id"),
+        organization_id: bigint_cell(row, "organization_id"),
+        brand_no: string_cell(row, "brand_no"),
+        name: string_cell(row, "name"),
+        description: optional_string_cell(row, "description"),
+        status: string_cell(row, "status"),
+        sort_order: bigint_cell(row, "sort_order"),
+        version: bigint_cell(row, "version"),
+        created_at: timestamp_cell(row, "created_at"),
+        updated_at: timestamp_cell(row, "updated_at"),
+    }
 }
 
 fn map_category_attribute_row(row: &sqlx::postgres::PgRow) -> CategoryAttributeRecord {
@@ -4773,7 +5381,7 @@ async fn classify_guarded_miss(
 /// Integrity violations are mapped by SQLSTATE rather than by message text: a duplicate business key
 /// is a `409`, a violated CHECK or a missing reference is a `422`, and anything else stays a `5xx`
 /// without leaking schema internals to the caller.
-fn store_error(context: &str, error: sqlx::Error) -> CommerceServiceError {
+pub(crate) fn store_error(context: &str, error: sqlx::Error) -> CommerceServiceError {
     tracing::error!(%error, context, "merchandise catalog statement failed");
     if let Some(database) = error.as_database_error() {
         match database.code().as_deref() {

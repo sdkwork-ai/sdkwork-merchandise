@@ -255,7 +255,7 @@ function referencedTables(statement) {
 
 test("baseline declares only table families this capability owns", () => {
   const tables = baselineTables(readFileSync(baselinePath, "utf8"));
-  assert.equal(tables.length, 17, "baseline table count changed; update the expectation deliberately");
+  assert.equal(tables.length, 19, "baseline table count changed; update the expectation deliberately");
 
   const foreign = tables.filter((t) => FOREIGN_TABLE_PATTERNS.some((p) => p.test(t)));
   assert.deepEqual(foreign, [], "baseline must not declare tables owned by sibling capabilities");

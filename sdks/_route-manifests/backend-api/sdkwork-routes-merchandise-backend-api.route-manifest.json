@@ -937,6 +937,116 @@
       },
       "requestContext": "WebRequestContext",
       "apiSurface": "backend-api"
+    },
+    {
+      "method": "GET",
+      "path": "/backend/v3/api/catalog/brands",
+      "operationId": "brands.list",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.read"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
+    },
+    {
+      "method": "POST",
+      "path": "/backend/v3/api/catalog/brands",
+      "operationId": "brands.create",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.manage"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
+    },
+    {
+      "method": "GET",
+      "path": "/backend/v3/api/catalog/brands/{brandId}",
+      "operationId": "brands.retrieve",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.read"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands/{brandId}"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
+    },
+    {
+      "method": "PATCH",
+      "path": "/backend/v3/api/catalog/brands/{brandId}",
+      "operationId": "brands.update",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.manage"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands/{brandId}"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
+    },
+    {
+      "method": "DELETE",
+      "path": "/backend/v3/api/catalog/brands/{brandId}",
+      "operationId": "brands.delete",
+      "tags": [
+        "catalog"
+      ],
+      "auth": {
+        "mode": "dual-token",
+        "required": true,
+        "permission": "commerce.catalog.manage"
+      },
+      "ownership": {
+        "owner": "sdkwork-shop",
+        "apiAuthority": "sdkwork-shop-backend-api"
+      },
+      "source": {
+        "file": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands/{brandId}"
+      },
+      "requestContext": "WebRequestContext",
+      "apiSurface": "backend-api"
     }
   ]
 }

@@ -139,6 +139,15 @@
             }
           },
           {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row (the seed manifest's fallbackLocale rule)."
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -872,6 +881,15 @@
             }
           },
           {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Narrows the page to one brand."
+          },
+          {
             "name": "product_type",
             "in": "query",
             "required": false,
@@ -886,6 +904,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row (the seed manifest's fallbackLocale rule)."
           },
           {
             "name": "page",
@@ -1994,6 +2021,15 @@
             }
           },
           {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row (the seed manifest's fallbackLocale rule)."
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -2717,6 +2753,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row (the seed manifest's fallbackLocale rule)."
           },
           {
             "name": "page",
@@ -5139,6 +5184,15 @@
             }
           },
           {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row (the seed manifest's fallbackLocale rule)."
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -6525,6 +6579,771 @@
           "preconditionFailedCode": "41201"
         }
       }
+    },
+    "/backend/v3/api/catalog/brands": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog brands list.",
+        "operationId": "brands.list",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The locale the text fields are rendered in. A missing translation falls back to the base row (the seed manifest's fallbackLocale rule)."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          }
+        ],
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.brands",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.read",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "items",
+                            "pageInfo"
+                          ],
+                          "properties": {
+                            "items": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/Brand"
+                              }
+                            },
+                            "pageInfo": {
+                              "$ref": "#/components/schemas/PageInfo"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands"
+      },
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog brands create.",
+        "operationId": "brands.create",
+        "parameters": [],
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.brands",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBrandRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Resource created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Brand"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands"
+      }
+    },
+    "/backend/v3/api/catalog/brands/{brandId}": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog brands retrieve.",
+        "operationId": "brands.retrieve",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The brand to read. A missing or soft-deleted brand answers 404."
+          }
+        ],
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.brands",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.read",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Brand"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands/{brandId}"
+      },
+      "patch": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog brands update.",
+        "operationId": "brands.update",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
+          }
+        ],
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.brands",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBrandRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SdkWorkApiResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "item"
+                          ],
+                          "properties": {
+                            "item": {
+                              "$ref": "#/components/schemas/Brand"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The row version this representation was read at, quoted as a strong entity-tag. Send it back verbatim as `If-Match` on the next write; it is the same number the body's `version` field carries, emitted as a header so a client can round-trip it without parsing the payload.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\"[0-9]+\"$",
+                  "example": "\"3\""
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed: the row moved past the version the request named",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required: the request carried no If-Match",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands/{brandId}"
+      },
+      "delete": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog brands delete.",
+        "operationId": "brands.delete",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version this request is editing, taken from the `version` field or the `ETag` of the last read. Required: `API_SPEC` section 2189 maps a missing required precondition to `42801 PRECONDITION_REQUIRED`. The bare form `3` is accepted alongside the standard quoted entity-tag `\"3\"`; the weak form `W/\"3\"` and the wildcard `*` are both refused, because `If-Match` compares with the strong comparison function and `*` would let a caller opt out of a precondition this operation declares as required.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:\"[0-9]+\"|[0-9]+)$",
+              "example": "\"3\""
+            }
+          }
+        ],
+        "security": [
+          {
+            "AuthToken": [],
+            "AccessToken": []
+          }
+        ],
+        "x-sdkwork-owner": "sdkwork-shop",
+        "x-sdkwork-api-authority": "sdkwork-shop-backend-api",
+        "x-sdkwork-domain": "commerce",
+        "x-sdkwork-resource": "catalog.brands",
+        "x-sdkwork-request-context": "WebRequestContext",
+        "x-sdkwork-api-surface": "backend-api",
+        "x-sdkwork-server-request-id": true,
+        "x-sdkwork-source-route-crate": "sdkwork-routes-merchandise-backend-api",
+        "x-sdkwork-auth-mode": "dual-token",
+        "x-sdkwork-permission": "commerce.catalog.manage",
+        "x-sdkwork-concurrency": {
+          "mode": "if-match",
+          "versionSource": "resource.version",
+          "etagHeader": "ETag",
+          "preconditionRequiredCode": "42801",
+          "preconditionFailedCode": "41201"
+        },
+        "responses": {
+          "204": {
+            "description": "The resource was retired. The response carries no body: the row is soft-deleted (`deleted_at` set, `version` advanced) and its unique slot is freed for a replacement."
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition failed: the row moved past the version the request named",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition required: the request carried no If-Match",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "x-sdkwork-source": "sdkwork-routes-merchandise-backend-api:/backend/v3/api/catalog/brands/{brandId}"
+      }
     }
   },
   "components": {
@@ -6569,6 +7388,10 @@
             "x-sdkwork-int64-string": true,
             "x-sdkwork-rust-type": "i64",
             "description": "The back-office tree position, when the category sits on one. The two trees are independent."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         }
       },
@@ -6613,6 +7436,10 @@
             "pattern": "^-?[0-9]+$",
             "x-sdkwork-int64-string": true,
             "description": "Three-state. Absent keeps the stored back-office position; an explicit null removes the category from the back-office tree; an id moves it."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         }
       },
@@ -6690,6 +7517,18 @@
           "taxClassCode": {
             "type": "string",
             "description": "The tenant's tax-classification key for this product."
+          },
+          "brandId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The brand this product belongs to, when one is declared."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         },
         "description": "The fixed-semantics fields (model number, barcode, weight, volume, tax class) are columns, not dynamic attributes, so they are queryable and constrainable — the baseline's own comment on commerce_product_spu."
@@ -6772,6 +7611,21 @@
               "null"
             ],
             "description": "Three-state."
+          },
+          "brandId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Three-state. Absent keeps the stored brand; an explicit null detaches the product from its brand; an id moves it.",
+            "x-sdkwork-rust-type": "i64"
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         }
       },
@@ -6891,6 +7745,46 @@
               "backorder"
             ],
             "description": "What happens when the tracked stock runs out. `backorder` requires inventoryTracking `quantity` (ck_commerce_product_sku_policy_requires_tracking); the pairing is checked at the boundary with both fields named."
+          },
+          "minOrderQuantity": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The quantity a single order must buy at least. Defaults to 1."
+          },
+          "maxOrderQuantity": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The quantity a single order may buy at most, when capped."
+          },
+          "stepQuantity": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The step the orderable quantity moves in. Defaults to 1."
+          },
+          "packageUnit": {
+            "type": "string",
+            "description": "The unit the buyer names (a box, a can), when declared."
+          },
+          "unitsPerPackage": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "How many sellable units one package holds, when declared."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         }
       },
@@ -7009,6 +7903,55 @@
               "backorder"
             ],
             "description": "The repository checks the pairing against the *effective* values after the merge, because a command that only states the policy cannot see the stored tracking mode."
+          },
+          "minOrderQuantity": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Restated minimum. The default (1) is restated as a value, never cleared."
+          },
+          "maxOrderQuantity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Three-state. An explicit null removes the cap.",
+            "x-sdkwork-rust-type": "i64"
+          },
+          "stepQuantity": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Restated step. The default (1) is restated as a value, never cleared."
+          },
+          "packageUnit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Three-state."
+          },
+          "unitsPerPackage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "Three-state.",
+            "x-sdkwork-rust-type": "i64"
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         }
       },
@@ -7082,6 +8025,10 @@
               "description": "One enumerable value. Bound by ck_commerce_product_attribute_value_display_length (1..200)."
             },
             "description": "Optional initial enumeration. Each entry becomes one commerce_product_attribute_value row. Only valid for valueType `enum`: a free-text attribute has no dictionary to seed."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         }
       },
@@ -7285,7 +8232,8 @@
               "spu",
               "sku",
               "category",
-              "attribute_value"
+              "attribute_value",
+              "brand"
             ],
             "description": "Kind of row the attachment hangs off. The values are the storage vocabulary the `ck_commerce_product_media_owner_type` CHECK accepts; this surface calls the `spu` owner a *product* everywhere else (`/catalog/products/{productId}`), but the filter value stays `spu`."
           },
@@ -7305,7 +8253,8 @@
               "sku_image",
               "video",
               "manual",
-              "certificate"
+              "certificate",
+              "logo"
             ],
             "description": "Role the resource plays on this owner. MEDIA_RESOURCE_SPEC section 5 fixes this set for the merchandise profile, and `ck_commerce_product_media_owner_role` narrows it for one owner kind: an `attribute_value` owner carries a swatch, so only `main_image`, `sku_image`, and `gallery_image` are accepted there. A role outside that subset is refused as a validation error, not by the column."
           },
@@ -7338,7 +8287,8 @@
               "sku_image",
               "video",
               "manual",
-              "certificate"
+              "certificate",
+              "logo"
             ],
             "description": "Role the resource plays on this owner. MEDIA_RESOURCE_SPEC section 5 fixes this set for the merchandise profile, and `ck_commerce_product_media_owner_role` narrows it for one owner kind: an `attribute_value` owner carries a swatch, so only `main_image`, `sku_image`, and `gallery_image` are accepted there. A role outside that subset is refused as a validation error, not by the column."
           },
@@ -8073,6 +9023,17 @@
             "x-sdkwork-rust-type": "i64",
             "description": "Owning category id."
           },
+          "brandId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The brand this product belongs to, when one is declared. fk_commerce_product_spu_brand keeps the reference real."
+          },
           "name": {
             "type": "string",
             "description": "Default-locale name. Bounded by ck_commerce_product_spu_name_length."
@@ -8289,6 +9250,8 @@
           "inventoryTracking",
           "status",
           "salesStatus",
+          "stepQuantity",
+          "minOrderQuantity",
           "inventoryPolicy",
           "currencySymbol",
           "createdAt",
@@ -8417,6 +9380,51 @@
             "pattern": "^-?[0-9]+$",
             "x-sdkwork-int64-string": true,
             "description": "Ship weight in grams, the figure logistics rates a shipment from. ck_commerce_product_sku_weight pins >= 0.",
+            "x-sdkwork-rust-type": "i64"
+          },
+          "minOrderQuantity": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The quantity a single order must buy at least. Defaults to 1; ck_commerce_product_sku_min_order_quantity pins >= 1."
+          },
+          "maxOrderQuantity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "The quantity a single order may buy at most, when capped. ck_commerce_product_sku_max_order_quantity refuses a cap below the minimum.",
+            "x-sdkwork-rust-type": "i64"
+          },
+          "stepQuantity": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The step the orderable quantity moves in (a case, a dozen). Defaults to 1."
+          },
+          "packageUnit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The unit the buyer names (a box, a can), when declared."
+          },
+          "unitsPerPackage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "description": "How many sellable units one package holds, when declared.",
             "x-sdkwork-rust-type": "i64"
           },
           "fulfillmentType": {
@@ -8817,7 +9825,8 @@
               "spu",
               "sku",
               "category",
-              "attribute_value"
+              "attribute_value",
+              "brand"
             ],
             "description": "Kind of row the attachment hangs off. The values are the storage vocabulary the `ck_commerce_product_media_owner_type` CHECK accepts; this surface calls the `spu` owner a *product* everywhere else (`/catalog/products/{productId}`), but the filter value stays `spu`."
           },
@@ -8838,7 +9847,8 @@
               "sku_image",
               "video",
               "manual",
-              "certificate"
+              "certificate",
+              "logo"
             ],
             "description": "Role the resource plays on this owner. MEDIA_RESOURCE_SPEC section 5 fixes this set for the merchandise profile, and `ck_commerce_product_media_owner_role` narrows it for one owner kind: an `attribute_value` owner carries a swatch, so only `main_image`, `sku_image`, and `gallery_image` are accepted there. A role outside that subset is refused as a validation error, not by the column."
           },
@@ -9166,6 +10176,10 @@
               "inactive"
             ],
             "description": "Shared lifecycle vocabulary. The authority for this set is the column CHECK constraint named in the field description."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         },
         "description": "The mutable surface of an attribute: display name, unit, ordering, and lifecycle status. The type facts (valueType, inputHint, isMultiValue) are create-time only and deliberately absent here."
@@ -9218,6 +10232,10 @@
             "x-sdkwork-int64-string": true,
             "x-sdkwork-rust-type": "i64",
             "description": "Sibling ordering key, ascending. Defaults to 0."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         }
       },
@@ -9263,6 +10281,10 @@
               "inactive"
             ],
             "description": "Shared lifecycle vocabulary. The authority for this set is the column CHECK constraint named in the field description."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         },
         "description": "The identity pair (attributeId, valueCode) is deliberately absent: moving a value between attributes or renaming its key is a delete plus a create, not an edit."
@@ -9753,6 +10775,207 @@
               "inactive"
             ],
             "description": "Shared lifecycle status."
+          }
+        }
+      },
+      "Brand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "tenantId",
+          "organizationId",
+          "brandNo",
+          "name",
+          "status",
+          "sortOrder",
+          "createdAt",
+          "version",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Primary key."
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The tenant the brand belongs to. Always the caller's own scope."
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "The organization the brand belongs to. Always the caller's own scope."
+          },
+          "brandNo": {
+            "type": "string",
+            "description": "Stable business key of the brand, unique per tenant while the row is live (uk_commerce_product_brand_tenant_no)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Default-locale display name. Bounded by ck_commerce_product_brand_name_length (1..200)."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default-locale description of the brand."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Shared lifecycle vocabulary. The authority for this set is ck_commerce_product_brand_status."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Sibling ordering key, ascending."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Row creation time."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last write time."
+          },
+          "version": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Row version, advanced by every write to this row and by any write that retires it. Echo it back as `If-Match`."
+          }
+        }
+      },
+      "BrandListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SdkWorkApiResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items",
+                  "pageInfo"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Brand"
+                    }
+                  },
+                  "pageInfo": {
+                    "$ref": "#/components/schemas/PageInfo"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CreateBrandRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "brandNo",
+          "name"
+        ],
+        "properties": {
+          "brandNo": {
+            "type": "string",
+            "description": "Stable business key of the brand, unique per tenant while the row is live.",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "Default-locale display name. Bound by ck_commerce_product_brand_name_length (1..200).",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "description": "Default-locale description of the brand."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Sibling ordering key, ascending. Defaults to 0."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
+          }
+        }
+      },
+      "UpdateBrandRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Replacement display name. Bound by ck_commerce_product_brand_name_length (1..200).",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Three-state. Absent leaves the stored text alone; an explicit null removes it; a string replaces it."
+          },
+          "sortOrder": {
+            "type": "string",
+            "format": "int64",
+            "pattern": "^-?[0-9]+$",
+            "x-sdkwork-int64-string": true,
+            "x-sdkwork-rust-type": "i64",
+            "description": "Sibling ordering key, ascending."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "description": "Shared lifecycle vocabulary. The authority for this set is ck_commerce_product_brand_status."
+          },
+          "locale": {
+            "type": "string",
+            "description": "The locale the text fields are written in. Omitted — or the default language — writes the base row; any other locale writes a translation row and leaves the base row alone."
           }
         }
       }

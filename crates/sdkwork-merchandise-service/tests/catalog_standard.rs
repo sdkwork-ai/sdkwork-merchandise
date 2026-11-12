@@ -131,6 +131,9 @@ fn catalog_repository_contract_exposes_required_commands() {
             CatalogRepositoryCommand::CreatePriceListItem,
             CatalogRepositoryCommand::UpdatePriceListItem,
             CatalogRepositoryCommand::DeletePriceListItem,
+            CatalogRepositoryCommand::CreateBrand,
+            CatalogRepositoryCommand::UpdateBrand,
+            CatalogRepositoryCommand::DeleteBrand,
             CatalogRepositoryCommand::CreateMedia,
             CatalogRepositoryCommand::UpdateMedia,
             CatalogRepositoryCommand::DeleteMedia,
@@ -258,8 +261,9 @@ fn catalog_service_contract_exposes_domain_operations() {
 #[test]
 fn product_spu_command_owns_the_product_type_vocabulary() {
     let command = CreateProductSpuCommand {
-
-    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
+        actor: ACTOR_ID.to_owned(),
+        locale: None,
+        tenant_id: TENANT_ID.to_owned(),
         organization_id: ORGANIZATION_ID.to_owned(),
         spu_no: "spu-membership-pro".to_owned(),
         title: "Pro membership".to_owned(),
@@ -267,6 +271,7 @@ fn product_spu_command_owns_the_product_type_vocabulary() {
         description: None,
         product_type: ProductType::Membership,
         category_id: "200001".to_owned(),
+        brand_id: None,
         // Fixed-semantics fields are columns, not command-required: a command
         // that declares none creates the same row the storage defaults produce.
         model_no: None,
@@ -300,8 +305,9 @@ fn product_spu_command_owns_the_product_type_vocabulary() {
 #[test]
 fn product_sku_command_owns_the_fulfillment_and_inventory_vocabulary() {
     let command = CreateProductSkuCommand {
-
-    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
+        actor: ACTOR_ID.to_owned(),
+        locale: None,
+        tenant_id: TENANT_ID.to_owned(),
         organization_id: ORGANIZATION_ID.to_owned(),
         spu_id: "300001".to_owned(),
         sku_no: "sku-membership-month-pro".to_owned(),
@@ -315,6 +321,11 @@ fn product_sku_command_owns_the_fulfillment_and_inventory_vocabulary() {
         cost_price_minor: None,
         barcode: None,
         weight_gram: None,
+        min_order_quantity: None,
+        max_order_quantity: None,
+        step_quantity: None,
+        package_unit: None,
+        units_per_package: None,
         inventory_policy: InventoryPolicy::Deny,
         currency_code: "CNY".to_owned(),
         fulfillment_type: FulfillmentType::MembershipActivation,
@@ -378,8 +389,9 @@ fn product_sku_command_owns_the_fulfillment_and_inventory_vocabulary() {
 #[test]
 fn sku_update_keeps_the_reference_price_three_states_apart() {
     let update = |list_price_minor| UpdateProductSkuCommand {
-
-    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
+        actor: ACTOR_ID.to_owned(),
+        locale: None,
+        tenant_id: TENANT_ID.to_owned(),
         sku_id: "400001".to_owned(),
         name: None,
         title: None,
@@ -388,6 +400,11 @@ fn sku_update_keeps_the_reference_price_three_states_apart() {
         cost_price_minor: None,
         barcode: None,
         weight_gram: None,
+        min_order_quantity: None,
+        max_order_quantity: None,
+        step_quantity: None,
+        package_unit: None,
+        units_per_package: None,
         inventory_policy: None,
         currency_code: None,
         fulfillment_type: None,
@@ -428,8 +445,9 @@ fn sku_update_keeps_the_reference_price_three_states_apart() {
 #[test]
 fn category_and_attribute_commands_own_their_write_vocabulary() {
     let category = CreateCategoryCommand {
-
-    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
+        actor: ACTOR_ID.to_owned(),
+        locale: None,
+        tenant_id: TENANT_ID.to_owned(),
         organization_id: ORGANIZATION_ID.to_owned(),
         category_no: "cat-membership".to_owned(),
         parent_id: None,
@@ -440,8 +458,9 @@ fn category_and_attribute_commands_own_their_write_vocabulary() {
     assert!(category.validate().is_ok());
 
     let attribute = CreateAttributeCommand {
-
-    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
+        actor: ACTOR_ID.to_owned(),
+        locale: None,
+        tenant_id: TENANT_ID.to_owned(),
         organization_id: ORGANIZATION_ID.to_owned(),
         attribute_no: "attr-duration".to_owned(),
         name: "Duration".to_owned(),
@@ -938,8 +957,8 @@ fn media_commands_own_the_owner_role_pair_and_the_resource_identity() {
     // An update re-checks the snapshot only when one is being written, and the owner kind is not a
     // field of it at all: the repository re-evaluates the pair against the row's stored owner.
     let untouched = UpdateMediaCommand {
-
-    actor: ACTOR_ID.to_owned(),        tenant_id: TENANT_ID.to_owned(),
+        actor: ACTOR_ID.to_owned(),
+        tenant_id: TENANT_ID.to_owned(),
         // The version the caller read. `validate` does not judge it — it is not a property of the
         // payload — but the command carries it because the repository compares it against the row.
         expected_version: 3,
@@ -954,8 +973,8 @@ fn media_commands_own_the_owner_role_pair_and_the_resource_identity() {
     assert_eq!(untouched.media_resource_id(), Ok(None));
 
     let retargeted = UpdateMediaCommand {
-
-    actor: ACTOR_ID.to_owned(),        media_id: "1800000000000000001".to_owned(),
+        actor: ACTOR_ID.to_owned(),
+        media_id: "1800000000000000001".to_owned(),
         sort_order: Some(-1),
         ..untouched
     };

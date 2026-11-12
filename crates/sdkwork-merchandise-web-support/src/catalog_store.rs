@@ -62,6 +62,16 @@ pub struct CatalogState {
 pub struct CategoryQueryParams {
     pub parent_id: Option<String>,
     pub status: Option<String>,
+    locale: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+/// Query parameters for the brand collection.
+#[derive(Debug, Deserialize)]
+pub struct BrandQueryParams {
+    pub status: Option<String>,
+    locale: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }
@@ -73,6 +83,7 @@ pub struct CategoryQueryParams {
 #[derive(Debug, Deserialize)]
 pub struct AttributeQueryParams {
     pub status: Option<String>,
+    locale: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }
@@ -118,7 +129,10 @@ struct CategoryAttributeQueryParams {
 pub struct ProductListQueryParams {
     pub q: Option<String>,
     pub category_id: Option<String>,
+    /// Narrows the page to one brand.
+    pub brand_id: Option<String>,
     pub product_type: Option<String>,
+    locale: Option<String>,
     pub status: Option<String>,
     pub sort: Option<String>,
     pub page: Option<i64>,
@@ -140,6 +154,7 @@ struct SkuListQueryParams {
     product_id: Option<String>,
     attribute_value_id: Option<String>,
     status: Option<String>,
+    locale: Option<String>,
     page: Option<i64>,
     page_size: Option<i64>,
 }
@@ -183,6 +198,9 @@ struct CreateCategoryBody {
     back_parent_id: Option<String>,
     name: String,
     sort_order: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -196,6 +214,9 @@ struct UpdateCategoryBody {
     name: Option<String>,
     sort_order: Option<String>,
     status: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,6 +230,9 @@ struct CreateAttributeBody {
     unit_symbol: Option<String>,
     sort_order: Option<String>,
     values: Option<Vec<String>>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 /// Update-attribute body.
@@ -227,6 +251,9 @@ struct UpdateAttributeBody {
     unit_symbol: Option<Option<String>>,
     sort_order: Option<String>,
     status: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 /// Query parameters for one attribute's dictionary values.
@@ -236,6 +263,7 @@ struct UpdateAttributeBody {
 pub struct AttributeValueQueryParams {
     pub attribute_id: String,
     pub status: Option<String>,
+    locale: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }
@@ -249,6 +277,9 @@ struct CreateAttributeValueBody {
     color_hex: Option<String>,
     media_resource_id: Option<String>,
     sort_order: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 /// Update-attribute-value body.
@@ -267,6 +298,9 @@ struct UpdateAttributeValueBody {
     media_resource_id: Option<Option<String>>,
     sort_order: Option<String>,
     status: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 /// One entry of a product attribute-set replacement body.
@@ -336,6 +370,36 @@ pub struct UpdatePriceListItemBody {
     pub status: Option<String>,
 }
 
+/// Create-body for one brand.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateBrandBody {
+    pub brand_no: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub sort_order: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
+}
+
+/// Update-brand body.
+///
+/// `description` is three-state: an omitted key keeps the stored text and an
+/// explicit null removes it.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateBrandBody {
+    pub name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub description: Option<Option<String>>,
+    pub sort_order: Option<String>,
+    pub status: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
+}
+
 /// Create-body for one category attribute binding.
 ///
 /// `role` defaults to `parameter` when omitted: a binding that has not been classified is
@@ -384,11 +448,16 @@ pub struct CreateSpuBody {
     pub description: Option<String>,
     pub product_type: String,
     pub category_id: String,
+    /// The brand this product belongs to, as an int64 string.
+    pub brand_id: Option<String>,
     pub model_no: Option<String>,
     pub barcode: Option<String>,
     pub weight_gram: Option<String>,
     pub volume_ml: Option<String>,
     pub tax_class_code: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 /// Update-SPU body.
@@ -406,6 +475,10 @@ pub struct UpdateSpuBody {
     #[serde(default, deserialize_with = "deserialize_present_option")]
     pub description: Option<Option<String>>,
     pub category_id: Option<String>,
+    /// The brand this product belongs to. Three-state: an explicit null detaches the product
+    /// from its brand.
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub brand_id: Option<Option<String>>,
     /// The five fixed-semantics columns are three-state: an explicit `null` removes the value,
     /// an omitted key keeps it.
     #[serde(default, deserialize_with = "deserialize_present_option")]
@@ -421,6 +494,9 @@ pub struct UpdateSpuBody {
     /// Lifecycle status as a storage token. The handler decodes it through `ProductStatus`, so an
     /// unknown token is a named `422` at the boundary rather than a `23514` from the CHECK.
     pub status: Option<String>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 /// Create-SKU body.
@@ -445,11 +521,19 @@ struct CreateSkuBody {
     cost_price_minor: Option<String>,
     barcode: Option<String>,
     weight_gram: Option<String>,
+    min_order_quantity: Option<String>,
+    max_order_quantity: Option<String>,
+    step_quantity: Option<String>,
+    package_unit: Option<String>,
+    units_per_package: Option<String>,
     currency_code: String,
     fulfillment_type: String,
     inventory_tracking: String,
     inventory_policy: String,
     attribute_value_ids: Option<Vec<String>>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 /// Update-SKU body.
@@ -473,12 +557,25 @@ struct UpdateSkuBody {
     barcode: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_present_option")]
     weight_gram: Option<Option<String>>,
+    /// The trade constraints: min/step are restated values (their defaults are NOT NULL),
+    /// max/package facts are three-state.
+    pub min_order_quantity: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub max_order_quantity: Option<Option<String>>,
+    pub step_quantity: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub package_unit: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub units_per_package: Option<Option<String>>,
     currency_code: Option<String>,
     fulfillment_type: Option<String>,
     inventory_tracking: Option<String>,
     inventory_policy: Option<String>,
     status: Option<String>,
     attribute_value_ids: Option<Vec<String>>,
+    /// The locale the text fields are written in. Omitted — or the default language —
+    /// writes the base row; any other locale writes a translation row.
+    pub locale: Option<String>,
 }
 
 /// Distinguishes an absent JSON key from an explicit `null` on a nullable body field.
@@ -695,6 +792,8 @@ pub struct ProductResponse {
     product_no: String,
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     category_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    brand_id: Option<i64>,
     name: String,
     title: Option<String>,
     subtitle: Option<String>,
@@ -722,6 +821,49 @@ pub struct ProductResponse {
     /// optimistic concurrency, so a client that has read a resource can always name what it read.
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     version: i64,
+}
+
+/// One brand, on the wire.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrandResponse {
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    tenant_id: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    organization_id: i64,
+    brand_no: String,
+    name: String,
+    description: Option<String>,
+    status: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    sort_order: i64,
+    created_at: String,
+    updated_at: String,
+    /// Monotonic row version, bumped by every write to the row.
+    ///
+    /// This is the number `If-Match` expects on the next update or delete, and the same value the
+    /// response"s `ETag` carries". `API_SPEC` section 17 makes the row version the precondition for
+    /// optimistic concurrency, so a client that has read a resource can always name what it read.
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    version: i64,
+}
+
+pub fn map_brand(value: sdkwork_merchandise_service::BrandRecord) -> BrandResponse {
+    BrandResponse {
+        id: value.id,
+        tenant_id: value.tenant_id,
+        organization_id: value.organization_id,
+        brand_no: value.brand_no,
+        name: value.name,
+        description: value.description,
+        status: value.status,
+        sort_order: value.sort_order,
+        created_at: value.created_at,
+        version: value.version,
+        updated_at: value.updated_at,
+    }
 }
 
 /// One sales axis of an SKU, as published inside [`SkuResponse`].
@@ -781,6 +923,15 @@ pub struct SkuResponse {
     barcode: Option<String>,
     #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
     weight_gram: Option<i64>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    min_order_quantity: i64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    max_order_quantity: Option<i64>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    step_quantity: i64,
+    package_unit: Option<String>,
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    units_per_package: Option<i64>,
     fulfillment_type: String,
     inventory_tracking: String,
     /// What happens when the tracked stock runs out. `backorder` is only legal on a tracked
@@ -1018,6 +1169,7 @@ pub fn map_product(value: SpuRecord) -> ProductResponse {
         organization_id: value.organization_id,
         product_no: value.spu_no,
         category_id: value.category_id,
+        brand_id: value.brand_id,
         name: value.name,
         title: value.title,
         subtitle: value.subtitle,
@@ -1069,6 +1221,11 @@ pub fn map_sku(value: SkuRecord) -> SkuResponse {
         cost_price_minor: value.cost_price_minor,
         barcode: value.barcode,
         weight_gram: value.weight_gram,
+        min_order_quantity: value.min_order_quantity,
+        max_order_quantity: value.max_order_quantity,
+        step_quantity: value.step_quantity,
+        package_unit: value.package_unit,
+        units_per_package: value.units_per_package,
         fulfillment_type: value.fulfillment_type,
         inventory_tracking: value.inventory_tracking,
         inventory_policy: value.inventory_policy,

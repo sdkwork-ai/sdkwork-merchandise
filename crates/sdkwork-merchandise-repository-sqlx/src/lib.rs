@@ -7,5 +7,6 @@
 
 pub mod postgres_catalog;
 mod postgres_catalog_port;
+mod postgres_translations;
 
 pub use postgres_catalog::PostgresCommerceCatalogStore;

@@ -24,38 +24,38 @@ use axum::routing::{get, patch, post, put};
 use axum::Router;
 use sdkwork_iam_context_service::IamAppContext;
 use sdkwork_merchandise_service::{
-    ArchiveSpuCommand, AttributeInputHint, AttributeListQuery, AttributeRole, AttributeRetrieveQuery,
-    CategoryRetrieveQuery, PriceListRetrieveQuery, ProductSkuRetrieveQuery,
-    AttributeValueListQuery, AttributeValueType, CategoryAttributeListQuery, CategoryListQuery,
-    CreateAttributeCommand, CreateAttributeValueCommand, CreateCategoryAttributeCommand,
+    ArchiveSpuCommand, AttributeInputHint, AttributeListQuery, AttributeRetrieveQuery,
+    AttributeRole, AttributeValueListQuery, AttributeValueType, BrandListQuery, BrandRetrieveQuery,
+    CategoryAttributeListQuery, CategoryListQuery, CategoryRetrieveQuery, CreateAttributeCommand,
+    CreateAttributeValueCommand, CreateBrandCommand, CreateCategoryAttributeCommand,
     CreateCategoryCommand, CreateMediaCommand, CreatePriceListCommand, CreatePriceListItemCommand,
     CreateProductSkuCommand, CreateProductSpuCommand, DeleteAttributeValueCommand,
-    DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
+    DeleteBrandCommand, DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
     DeletePriceListItemCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, FulfillmentType,
     GuardedWrite, InventoryPolicy, InventoryTrackingMode, LifecycleStatus, MediaListQuery,
-    MediaOwnerType, MediaRole, PriceListItemListQuery, PriceListListQuery,
-    ProductAttributeValueInput, ProductSkuListQuery, ProductSpuListQuery, ProductSpuRetrieveQuery,
-    ProductStatus, ProductType, PublishSpuCommand, ReplaceProductAttributesCommand,
-    SpuAttributeRole, UpdateAttributeCommand, UpdateAttributeValueCommand,
-    UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
-    UpdatePriceListCommand, UpdatePriceListItemCommand, UpdateProductSkuCommand,
-    UpdateProductSpuCommand,
+    MediaOwnerType, MediaRole, PriceListItemListQuery, PriceListListQuery, PriceListRetrieveQuery,
+    ProductAttributeValueInput, ProductSkuListQuery, ProductSkuRetrieveQuery, ProductSpuListQuery,
+    ProductSpuRetrieveQuery, ProductStatus, ProductType, PublishSpuCommand,
+    ReplaceProductAttributesCommand, SpuAttributeRole, UpdateAttributeCommand,
+    UpdateAttributeValueCommand, UpdateBrandCommand, UpdateCategoryAttributeCommand,
+    UpdateCategoryCommand, UpdateMediaCommand, UpdatePriceListCommand, UpdatePriceListItemCommand,
+    UpdateProductSkuCommand, UpdateProductSpuCommand,
 };
 
 use super::{
     catalog_error_response, expected_version_from_if_match, map_attribute, map_attribute_value,
-    map_category, map_category_attribute, map_media, map_price_list, map_price_list_item,
-    map_product, map_product_attributes, map_sku, not_found_response, stale_version_response,
-    success_created_resource, success_no_content, success_offset_page, success_resource_with_etag,
-    unauthorized_response, validation_response, AttributeQueryParams, AttributeValueQueryParams,
-    CatalogJson, CatalogRepositoryPort, CatalogState, CategoryAttributeQueryParams,
-    CategoryQueryParams, CreateAttributeBody, CreateAttributeValueBody,
-    CreateCategoryAttributeBody, CreateCategoryBody, CreateMediaBody, CreatePriceListBody,
-    CreatePriceListItemBody, CreateSkuBody, CreateSpuBody, MediaQueryParams,
-    PriceListItemQueryParams, PriceListQueryParams, ProductListQueryParams,
+    map_brand, map_category, map_category_attribute, map_media, map_price_list,
+    map_price_list_item, map_product, map_product_attributes, map_sku, not_found_response,
+    stale_version_response, success_created_resource, success_no_content, success_offset_page,
+    success_resource_with_etag, unauthorized_response, validation_response, AttributeQueryParams,
+    AttributeValueQueryParams, BrandQueryParams, CatalogJson, CatalogRepositoryPort, CatalogState,
+    CategoryAttributeQueryParams, CategoryQueryParams, CreateAttributeBody,
+    CreateAttributeValueBody, CreateBrandBody, CreateCategoryAttributeBody, CreateCategoryBody,
+    CreateMediaBody, CreatePriceListBody, CreatePriceListItemBody, CreateSkuBody, CreateSpuBody,
+    MediaQueryParams, PriceListItemQueryParams, PriceListQueryParams, ProductListQueryParams,
     ReplaceProductAttributesBody, SkuListQueryParams, UpdateAttributeBody,
-    UpdateAttributeValueBody, UpdateCategoryAttributeBody, UpdateCategoryBody, UpdateMediaBody,
-    UpdatePriceListBody, UpdatePriceListItemBody, UpdateSkuBody, UpdateSpuBody,
+    UpdateAttributeValueBody, UpdateBrandBody, UpdateCategoryAttributeBody, UpdateCategoryBody,
+    UpdateMediaBody, UpdatePriceListBody, UpdatePriceListItemBody, UpdateSkuBody, UpdateSpuBody,
 };
 use crate::subject::app_runtime_subject_from_extension;
 
@@ -230,6 +230,16 @@ pub fn build_backend_catalog_router(store: Arc<dyn CatalogRepositoryPort>) -> Ro
             patch(backend_update_price_list_item).delete(backend_delete_price_list_item),
         )
         .route(
+            "/backend/v3/api/catalog/brands",
+            get(backend_list_brands).post(backend_create_brand),
+        )
+        .route(
+            "/backend/v3/api/catalog/brands/{brandId}",
+            get(backend_retrieve_brand)
+                .patch(backend_update_brand)
+                .delete(backend_delete_brand),
+        )
+        .route(
             "/backend/v3/api/catalog/media",
             get(backend_list_media).post(backend_create_media),
         )
@@ -254,6 +264,7 @@ async fn backend_list_categories(
         subject.organization_id.as_deref(),
         params.parent_id.as_deref(),
         params.status.as_deref(),
+        params.locale.as_deref(),
         params.page,
         params.page_size,
     ) {
@@ -288,6 +299,7 @@ async fn backend_create_category(
         parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
     let actor = subject.user_id.clone();
     let command = CreateCategoryCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         organization_id,
@@ -334,6 +346,7 @@ async fn backend_update_category(
     let sort_order = parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref());
     let actor = subject.user_id.clone();
     let command = UpdateCategoryCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         expected_version,
@@ -408,8 +421,10 @@ async fn backend_list_products(
         subject.organization_id.as_deref(),
         params.q.as_deref(),
         params.category_id.as_deref(),
+        params.brand_id.as_deref(),
         params.product_type.as_deref(),
         params.status.as_deref(),
+        params.locale.as_deref(),
         params.sort.as_deref(),
         params.page,
         params.page_size,
@@ -469,6 +484,7 @@ async fn backend_create_product(
     let product_type = parse_or_422!(ProductType::from_storage_str(&body.product_type));
     let actor = subject.user_id.clone();
     let command = CreateProductSpuCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         organization_id,
@@ -478,6 +494,7 @@ async fn backend_create_product(
         description: body.description,
         product_type,
         category_id: body.category_id,
+        brand_id: body.brand_id,
         model_no: body.model_no,
         barcode: body.barcode,
         weight_gram: parse_optional_int64_or_400!("weightGram", body.weight_gram.as_deref()),
@@ -520,6 +537,7 @@ async fn backend_update_product(
     };
     let actor = subject.user_id.clone();
     let command = UpdateProductSpuCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         expected_version,
@@ -528,6 +546,7 @@ async fn backend_update_product(
         subtitle: body.subtitle,
         description: body.description,
         category_id: body.category_id,
+        brand_id: body.brand_id,
         model_no: body.model_no,
         barcode: body.barcode,
         weight_gram: parse_tri_state_int64_or_400!("weightGram", &body.weight_gram),
@@ -678,6 +697,7 @@ async fn backend_list_skus(
         params.product_id.as_deref(),
         params.attribute_value_id.as_deref(),
         params.status.as_deref(),
+        params.locale.as_deref(),
         params.page,
         params.page_size,
     ) {
@@ -717,6 +737,7 @@ async fn backend_create_sku(
     ));
     let actor = subject.user_id.clone();
     let command = CreateProductSkuCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         organization_id,
@@ -732,6 +753,20 @@ async fn backend_create_sku(
         ),
         barcode: body.barcode,
         weight_gram: parse_optional_int64_or_400!("weightGram", body.weight_gram.as_deref()),
+        min_order_quantity: parse_optional_int64_or_400!(
+            "minOrderQuantity",
+            body.min_order_quantity.as_deref()
+        ),
+        max_order_quantity: parse_optional_int64_or_400!(
+            "maxOrderQuantity",
+            body.max_order_quantity.as_deref()
+        ),
+        step_quantity: parse_optional_int64_or_400!("stepQuantity", body.step_quantity.as_deref()),
+        package_unit: body.package_unit,
+        units_per_package: parse_optional_int64_or_400!(
+            "unitsPerPackage",
+            body.units_per_package.as_deref()
+        ),
         inventory_policy: parse_or_422!(InventoryPolicy::from_storage_str(&body.inventory_policy,)),
         currency_code: body.currency_code,
         fulfillment_type,
@@ -789,6 +824,7 @@ async fn backend_update_sku(
     };
     let actor = subject.user_id.clone();
     let command = UpdateProductSkuCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         expected_version,
@@ -800,6 +836,20 @@ async fn backend_update_sku(
         cost_price_minor: parse_tri_state_int64_or_400!("costPriceMinor", &body.cost_price_minor),
         barcode: body.barcode,
         weight_gram: parse_tri_state_int64_or_400!("weightGram", &body.weight_gram),
+        min_order_quantity: parse_optional_int64_or_400!(
+            "minOrderQuantity",
+            body.min_order_quantity.as_deref()
+        ),
+        max_order_quantity: parse_tri_state_int64_or_400!(
+            "maxOrderQuantity",
+            &body.max_order_quantity
+        ),
+        step_quantity: parse_optional_int64_or_400!("stepQuantity", body.step_quantity.as_deref()),
+        package_unit: body.package_unit,
+        units_per_package: parse_tri_state_int64_or_400!(
+            "unitsPerPackage",
+            &body.units_per_package
+        ),
         inventory_policy: match body.inventory_policy.as_deref() {
             Some(raw) => Some(parse_or_422!(InventoryPolicy::from_storage_str(raw))),
             None => None,
@@ -878,6 +928,7 @@ async fn backend_list_attributes(
         &subject.tenant_id,
         subject.organization_id.as_deref(),
         params.status.as_deref(),
+        params.locale.as_deref(),
         params.page,
         params.page_size,
     ) {
@@ -914,6 +965,7 @@ async fn backend_create_attribute(
         parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
     let actor = subject.user_id.clone();
     let command = CreateAttributeCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         organization_id,
@@ -1250,6 +1302,7 @@ async fn backend_update_attribute(
     let sort_order = parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref());
     let actor = subject.user_id.clone();
     let command = UpdateAttributeCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         expected_version,
@@ -1288,6 +1341,7 @@ async fn backend_list_attribute_values(
         &params.attribute_id,
         subject.organization_id.as_deref(),
         params.status.as_deref(),
+        params.locale.as_deref(),
         params.page,
         params.page_size,
     ) {
@@ -1327,6 +1381,7 @@ async fn backend_create_attribute_value(
         parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
     let actor = subject.user_id.clone();
     let command = CreateAttributeValueCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         organization_id,
@@ -1374,6 +1429,7 @@ async fn backend_update_attribute_value(
     let sort_order = parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref());
     let actor = subject.user_id.clone();
     let command = UpdateAttributeValueCommand {
+        locale: body.locale,
         actor,
         tenant_id: subject.tenant_id,
         expected_version,
@@ -1591,6 +1647,180 @@ async fn backend_retrieve_price_list(
         }
         Ok(None) => not_found_response("price list was not found"),
         Err(error) => catalog_error_response("price list read model is unavailable", error),
+    }
+}
+
+async fn backend_list_brands(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Query(params): Query<BrandQueryParams>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let query = match BrandListQuery::new(
+        &subject.tenant_id,
+        subject.organization_id.as_deref(),
+        params.status.as_deref(),
+        params.locale.as_deref(),
+        params.page,
+        params.page_size,
+    ) {
+        Ok(query) => query,
+        Err(error) => return validation_response(error.message()),
+    };
+    match state.store.list_brands_page(query).await {
+        Ok(data) => success_offset_page(
+            data.items.into_iter().map(map_brand).collect(),
+            data.page,
+            data.page_size,
+            data.total_items,
+        ),
+        Err(error) => catalog_error_response("brand list is unavailable", error),
+    }
+}
+
+async fn backend_retrieve_brand(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(brand_id): Path<String>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let query = match BrandRetrieveQuery::new(&subject.tenant_id, &brand_id) {
+        Ok(query) => query,
+        Err(error) => return validation_response(error.message()),
+    };
+    match state.store.retrieve_brand(query).await {
+        Ok(Some(data)) => {
+            let version = data.version;
+            success_resource_with_etag(map_brand(data), version)
+        }
+        Ok(None) => not_found_response("brand was not found"),
+        Err(error) => catalog_error_response("brand read model is unavailable", error),
+    }
+}
+
+async fn backend_create_brand(
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    CatalogJson(body): CatalogJson<CreateBrandBody>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+    let actor = subject.user_id.clone();
+    let organization_id = match subject.organization_id.as_deref() {
+        Some(id) => id.to_owned(),
+        None => return validation_response("organization_id is required"),
+    };
+    let sort_order =
+        parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()).unwrap_or(0);
+    let command = CreateBrandCommand {
+        locale: body.locale,
+        actor,
+        tenant_id: subject.tenant_id,
+        organization_id,
+        brand_no: body.brand_no,
+        name: body.name,
+        description: body.description,
+        sort_order,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.create_brand(command).await {
+        Ok(data) => success_created_resource(map_brand(data)),
+        Err(error) => catalog_error_response("failed to create brand", error),
+    }
+}
+
+async fn backend_update_brand(
+    headers: axum::http::HeaderMap,
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(brand_id): Path<String>,
+    CatalogJson(body): CatalogJson<UpdateBrandBody>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+
+    // Read before the body is used for anything, so a request that did not say which version it is
+    // editing is refused with `428` rather than being allowed to reach a write.
+    let expected_version = match expected_version_from_if_match(&headers) {
+        Ok(version) => version,
+        Err(response) => return *response,
+    };
+    let actor = subject.user_id.clone();
+    let status = match body.status.as_deref() {
+        Some(raw) => Some(parse_or_422!(LifecycleStatus::from_storage_str(
+            "status", raw
+        ))),
+        None => None,
+    };
+    let command = UpdateBrandCommand {
+        locale: body.locale,
+        actor,
+        tenant_id: subject.tenant_id,
+        expected_version,
+        brand_id,
+        name: body.name,
+        description: body.description,
+        sort_order: parse_optional_int64_or_400!("sortOrder", body.sort_order.as_deref()),
+        status,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.update_brand(command).await {
+        Ok(GuardedWrite::Applied(data)) => {
+            let version = data.version;
+            success_resource_with_etag(map_brand(data), version)
+        }
+        Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("brand", stale),
+        Err(error) => catalog_error_response("failed to update brand", error),
+    }
+}
+
+async fn backend_delete_brand(
+    headers: axum::http::HeaderMap,
+    State(state): State<CatalogState>,
+    runtime_context: Option<Extension<IamAppContext>>,
+    Path(brand_id): Path<String>,
+) -> Response {
+    let subject = match app_runtime_subject_from_extension(runtime_context) {
+        Ok(subject) => subject,
+        Err(message) => return unauthorized_response(message),
+    };
+
+    // Read before the body is used for anything, so a request that did not say which version it is
+    // editing is refused with `428` rather than being allowed to reach a write.
+    let expected_version = match expected_version_from_if_match(&headers) {
+        Ok(version) => version,
+        Err(response) => return *response,
+    };
+    let command = DeleteBrandCommand {
+        actor: subject.user_id.clone(),
+        tenant_id: subject.tenant_id,
+        expected_version,
+        brand_id,
+    };
+    match command.validate() {
+        Ok(()) => {}
+        Err(error) => return validation_response(error.message()),
+    }
+    match state.store.delete_brand(command).await {
+        Ok(GuardedWrite::Applied(())) => success_no_content(),
+        Ok(GuardedWrite::StaleVersion(stale)) => stale_version_response("brand", stale),
+        Err(error) => catalog_error_response("failed to delete brand", error),
     }
 }
 
@@ -2088,344 +2318,5 @@ mod request_body_tests {
             Ok(Some(7))
         );
         assert!(super::parse_optional_int64("sortOrder", Some("seven")).is_err());
-    }
-}
-
-#[cfg(test)]
-mod guarded_write_tests {
-    //! Drives a full write route into a store double, which is the layer the request-body probe
-    //! above cannot reach: the precondition is read, the command is built with the actor from the
-    //! IAM context, the store answers, and the response carries the version as both `ETag` and
-    //! body field. `TECH_ARCHITECTURE.md` section 9 records why this needs a port double and no
-    //! database: the router holds `Arc<dyn CatalogRepositoryPort>`, so the composition root decides
-    //! what arrives, and this module decides it arrives from memory.
-
-    use super::*;
-    use axum::body::Body;
-    use axum::http::{header, Request, StatusCode};
-    use sdkwork_contract_service::CommerceServiceError;
-    use sdkwork_merchandise_service::{
-        ArchiveSpuCommand, AttributeListQuery, AttributeRecord, AttributeRetrieveQuery,
-        AttributeValueListQuery, AttributeValueRecord, CatalogOffsetPage,
-        CategoryAttributeListQuery, CategoryAttributeRecord, CategoryListQuery, CategoryRecord,
-        CategoryRetrieveQuery, CommerceCatalogFuture, CreateAttributeCommand,
-        CreateAttributeValueCommand, CreateCategoryAttributeCommand, CreateCategoryCommand,
-        CreateMediaCommand, CreatePriceListItemCommand, CreatePriceListCommand,
-        CreateProductSkuCommand, CreateProductSpuCommand, DeleteAttributeValueCommand,
-        DeleteCategoryAttributeCommand, DeleteCategoryCommand, DeleteMediaCommand,
-        DeletePriceListItemCommand, DeleteProductSkuCommand, DeleteProductSpuCommand, MediaListQuery,
-        MediaRecord, PriceListItemListQuery, PriceListItemRecord, PriceListListQuery,
-        PriceListRecord, PriceListRetrieveQuery, ProductAttributesRetrieveQuery,
-        ProductAttributesWrite, ProductSkuListQuery, ProductSkuRetrieveQuery, ProductSpuListQuery,
-        ProductSpuRetrieveQuery, PublishSpuCommand, ReplaceProductAttributesCommand, SkuRecord,
-        SpuAttributeRecord, SpuRecord, UpdateAttributeCommand, UpdateAttributeValueCommand,
-        UpdateCategoryAttributeCommand, UpdateCategoryCommand, UpdateMediaCommand,
-        UpdatePriceListItemCommand, UpdatePriceListCommand, UpdateProductSkuCommand,
-        UpdateProductSpuCommand,
-    };
-
-    /// A port double whose `update_category` applies and every other method is unreachable.
-    ///
-    /// The routes under test call exactly one method; everything else returning an error keeps an
-    /// accidental second store call loud instead of silently successful.
-    struct UpdateCategoryOnly;
-
-    fn category_record() -> CategoryRecord {
-        CategoryRecord {
-            id: 1000,
-            tenant_id: 1,
-            organization_id: 1,
-            category_no: "cat-1".to_owned(),
-            parent_id: None,
-            back_parent_id: None,
-            path: "/1000/".to_owned(),
-            depth: 0,
-            is_leaf: true,
-            name: "Apparel".to_owned(),
-            sort_order: 0,
-            status: "active".to_owned(),
-            version: 7,
-            created_at: "2026-01-01T00:00:00Z".to_owned(),
-            updated_at: "2026-01-01T00:00:00Z".to_owned(),
-        }
-    }
-
-    macro_rules! unreachable_port_method {
-        ($name:ident, $query:ty, $out:ty) => {
-            fn $name<'a>(&'a self, _: $query) -> CommerceCatalogFuture<'a, $out> {
-                Box::pin(async {
-                    Err(CommerceServiceError::storage("not reachable in this test"))
-                })
-            }
-        };
-    }
-
-    impl CatalogRepositoryPort for UpdateCategoryOnly {
-        fn list_categories<'a>(
-            &'a self,
-            _: CategoryListQuery,
-        ) -> CommerceCatalogFuture<'a, Vec<CategoryRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn list_categories_page<'a>(
-            &'a self,
-            _: CategoryListQuery,
-        ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<CategoryRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn retrieve_category<'a>(
-            &'a self,
-            _: CategoryRetrieveQuery,
-        ) -> CommerceCatalogFuture<'a, Option<CategoryRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn create_category<'a>(
-            &'a self,
-            command: CreateCategoryCommand,
-        ) -> CommerceCatalogFuture<'a, CategoryRecord> {
-            let _ = command;
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn update_category<'a>(
-            &'a self,
-            command: UpdateCategoryCommand,
-        ) -> CommerceCatalogFuture<'a, GuardedWrite<CategoryRecord>> {
-            // The actor must arrive threaded from the IAM context; the double refuses a write
-            // without one, which is what makes the audit-actor wiring observable here.
-            let mut record = category_record();
-            record.version = command.expected_version + 1;
-            Box::pin(async move {
-                assert_eq!(command.actor, "user-1", "the write must carry the actor");
-                Ok(GuardedWrite::Applied(record))
-            })
-        }
-        fn delete_category<'a>(
-            &'a self,
-            _: DeleteCategoryCommand,
-        ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn list_attributes<'a>(
-            &'a self,
-            _: AttributeListQuery,
-        ) -> CommerceCatalogFuture<'a, Vec<AttributeRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn list_attributes_page<'a>(
-            &'a self,
-            _: AttributeListQuery,
-        ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AttributeRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn retrieve_attribute<'a>(
-            &'a self,
-            _: AttributeRetrieveQuery,
-        ) -> CommerceCatalogFuture<'a, Option<AttributeRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn create_attribute<'a>(
-            &'a self,
-            _: CreateAttributeCommand,
-        ) -> CommerceCatalogFuture<'a, AttributeRecord> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn update_attribute<'a>(
-            &'a self,
-            _: UpdateAttributeCommand,
-        ) -> CommerceCatalogFuture<'a, GuardedWrite<AttributeRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn list_attribute_values_page<'a>(
-            &'a self,
-            _: AttributeValueListQuery,
-        ) -> CommerceCatalogFuture<'a, CatalogOffsetPage<AttributeValueRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn create_attribute_value<'a>(
-            &'a self,
-            _: CreateAttributeValueCommand,
-        ) -> CommerceCatalogFuture<'a, AttributeValueRecord> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn update_attribute_value<'a>(
-            &'a self,
-            _: UpdateAttributeValueCommand,
-        ) -> CommerceCatalogFuture<'a, GuardedWrite<AttributeValueRecord>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        fn delete_attribute_value<'a>(
-            &'a self,
-            _: DeleteAttributeValueCommand,
-        ) -> CommerceCatalogFuture<'a, GuardedWrite<()>> {
-            Box::pin(async { Err(CommerceServiceError::storage("not reachable")) })
-        }
-        unreachable_port_method!(
-            list_spu_attributes,
-            ProductAttributesRetrieveQuery,
-            Vec<SpuAttributeRecord>
-        );
-        unreachable_port_method!(
-            replace_spu_attributes,
-            ReplaceProductAttributesCommand,
-            GuardedWrite<ProductAttributesWrite>
-        );
-        unreachable_port_method!(
-            list_price_lists,
-            PriceListListQuery,
-            Vec<PriceListRecord>
-        );
-        unreachable_port_method!(
-            list_price_lists_page,
-            PriceListListQuery,
-            CatalogOffsetPage<PriceListRecord>
-        );
-        unreachable_port_method!(
-            create_price_list,
-            CreatePriceListCommand,
-            PriceListRecord
-        );
-        unreachable_port_method!(
-            retrieve_price_list,
-            PriceListRetrieveQuery,
-            Option<PriceListRecord>
-        );
-        unreachable_port_method!(
-            update_price_list,
-            UpdatePriceListCommand,
-            GuardedWrite<PriceListRecord>
-        );
-        unreachable_port_method!(
-            list_price_list_items,
-            PriceListItemListQuery,
-            Vec<PriceListItemRecord>
-        );
-        unreachable_port_method!(
-            list_price_list_items_page,
-            PriceListItemListQuery,
-            CatalogOffsetPage<PriceListItemRecord>
-        );
-        unreachable_port_method!(
-            create_price_list_item,
-            CreatePriceListItemCommand,
-            PriceListItemRecord
-        );
-        unreachable_port_method!(
-            update_price_list_item,
-            UpdatePriceListItemCommand,
-            GuardedWrite<PriceListItemRecord>
-        );
-        unreachable_port_method!(
-            delete_price_list_item,
-            DeletePriceListItemCommand,
-            GuardedWrite<()>
-        );
-        unreachable_port_method!(
-            list_category_attributes,
-            CategoryAttributeListQuery,
-            Vec<CategoryAttributeRecord>
-        );
-        unreachable_port_method!(
-            list_category_attributes_page,
-            CategoryAttributeListQuery,
-            CatalogOffsetPage<CategoryAttributeRecord>
-        );
-        unreachable_port_method!(
-            create_category_attribute,
-            CreateCategoryAttributeCommand,
-            CategoryAttributeRecord
-        );
-        unreachable_port_method!(
-            update_category_attribute,
-            UpdateCategoryAttributeCommand,
-            GuardedWrite<CategoryAttributeRecord>
-        );
-        unreachable_port_method!(
-            delete_category_attribute,
-            DeleteCategoryAttributeCommand,
-            GuardedWrite<()>
-        );
-        unreachable_port_method!(list_spus, ProductSpuListQuery, Vec<SpuRecord>);
-        unreachable_port_method!(
-            list_spus_page,
-            ProductSpuListQuery,
-            CatalogOffsetPage<SpuRecord>
-        );
-        unreachable_port_method!(
-            retrieve_spu,
-            ProductSpuRetrieveQuery,
-            Option<SpuRecord>
-        );
-        unreachable_port_method!(
-            create_spu,
-            CreateProductSpuCommand,
-            SpuRecord
-        );
-        unreachable_port_method!(
-            update_spu,
-            UpdateProductSpuCommand,
-            GuardedWrite<SpuRecord>
-        );
-        unreachable_port_method!(
-            publish_spu,
-            PublishSpuCommand,
-            GuardedWrite<SpuRecord>
-        );
-        unreachable_port_method!(
-            archive_spu,
-            ArchiveSpuCommand,
-            GuardedWrite<SpuRecord>
-        );
-        unreachable_port_method!(
-            delete_spu,
-            DeleteProductSpuCommand,
-            GuardedWrite<()>
-        );
-        unreachable_port_method!(list_skus, ProductSkuListQuery, Vec<SkuRecord>);
-        unreachable_port_method!(
-            list_skus_page,
-            ProductSkuListQuery,
-            CatalogOffsetPage<SkuRecord>
-        );
-        unreachable_port_method!(
-            retrieve_sku,
-            ProductSkuRetrieveQuery,
-            Option<SkuRecord>
-        );
-        unreachable_port_method!(
-            create_sku,
-            CreateProductSkuCommand,
-            SkuRecord
-        );
-        unreachable_port_method!(
-            update_sku,
-            UpdateProductSkuCommand,
-            GuardedWrite<SkuRecord>
-        );
-        unreachable_port_method!(
-            delete_sku,
-            DeleteProductSkuCommand,
-            GuardedWrite<()>
-        );
-        unreachable_port_method!(list_media, MediaListQuery, Vec<MediaRecord>);
-        unreachable_port_method!(
-            list_media_page,
-            MediaListQuery,
-            CatalogOffsetPage<MediaRecord>
-        );
-        unreachable_port_method!(
-            create_media,
-            CreateMediaCommand,
-            MediaRecord
-        );
-        unreachable_port_method!(
-            update_media,
-            UpdateMediaCommand,
-            GuardedWrite<MediaRecord>
-        );
-        unreachable_port_method!(
-            delete_media,
-            DeleteMediaCommand,
-            GuardedWrite<()>
-        );
     }
 }
