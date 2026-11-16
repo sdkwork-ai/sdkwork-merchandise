@@ -781,7 +781,7 @@ const LIST_SPUS_DEFAULT_SQL: &str = concat!(
        AND ($6::TEXT IS NULL OR commerce_product_spu.product_type = $6)
        AND ($7::TEXT IS NULL OR commerce_product_spu.status = $7)
      ORDER BY commerce_product_spu.created_at DESC, commerce_product_spu.id DESC
-     LIMIT $7 OFFSET $8"
+     LIMIT $8 OFFSET $9"
 );
 
 const LIST_SPUS_PRICE_ASC_SQL: &str = concat!(
@@ -804,7 +804,7 @@ const LIST_SPUS_PRICE_ASC_SQL: &str = concat!(
        AND ($7::TEXT IS NULL OR commerce_product_spu.status = $7)
      GROUP BY commerce_product_spu.id
      ORDER BY MIN(sku.sale_price_minor) ASC NULLS LAST, commerce_product_spu.id ASC
-     LIMIT $7 OFFSET $8"
+     LIMIT $8 OFFSET $9"
 );
 
 const LIST_SPUS_PRICE_DESC_SQL: &str = concat!(
@@ -827,7 +827,7 @@ const LIST_SPUS_PRICE_DESC_SQL: &str = concat!(
        AND ($7::TEXT IS NULL OR commerce_product_spu.status = $7)
      GROUP BY commerce_product_spu.id
      ORDER BY MIN(sku.sale_price_minor) DESC NULLS LAST, commerce_product_spu.id ASC
-     LIMIT $7 OFFSET $8"
+     LIMIT $8 OFFSET $9"
 );
 
 const COUNT_SPUS_SQL: &str = concat!(
@@ -5893,5 +5893,129 @@ mod variant_signature_tests {
         assert_eq!(signature, "period=annual;plan=pro;tier=basic");
         assert_eq!(signature.matches(';').count(), 2);
         assert_eq!(signature.matches('=').count(), 3);
+    }
+}
+
+#[cfg(test)]
+mod list_pagination_placeholder_tests {
+    //! Every paginated catalog statement must take `LIMIT`/`OFFSET` from its **last two**
+    //! placeholders, and every placeholder index from 1 to that maximum must be referenced.
+    //!
+    //! `LIST_SPUS_*` broke exactly this: the `status` filter was added on `$7`, which was also
+    //! still the `LIMIT` marker, so PostgreSQL rejected the statement while parsing it
+    //! (`argument of LIMIT must be type bigint, not type text`) and the store reported a
+    //! dependency outage. `GET /app/v3/api/catalog/products` answered 503 for every request
+    //! while `categories` kept working, which is what made the defect look like an outage
+    //! instead of a query bug.
+
+    use super::*;
+
+    fn statements() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("LIST_CATEGORIES_SQL", LIST_CATEGORIES_SQL),
+            ("LIST_ATTRIBUTES_SQL", LIST_ATTRIBUTES_SQL),
+            ("LIST_ATTRIBUTE_VALUES_SQL", LIST_ATTRIBUTE_VALUES_SQL),
+            ("LIST_PRICE_LISTS_SQL", LIST_PRICE_LISTS_SQL),
+            ("LIST_PRICE_LIST_ITEMS_SQL", LIST_PRICE_LIST_ITEMS_SQL),
+            ("LIST_BRANDS_SQL", LIST_BRANDS_SQL),
+            ("LIST_CATEGORY_ATTRIBUTES_SQL", LIST_CATEGORY_ATTRIBUTES_SQL),
+            ("LIST_SPUS_DEFAULT_SQL", LIST_SPUS_DEFAULT_SQL),
+            ("LIST_SPUS_PRICE_ASC_SQL", LIST_SPUS_PRICE_ASC_SQL),
+            ("LIST_SPUS_PRICE_DESC_SQL", LIST_SPUS_PRICE_DESC_SQL),
+            ("LIST_SKUS_SQL", LIST_SKUS_SQL),
+            ("LIST_MEDIA_SQL", LIST_MEDIA_SQL),
+        ]
+    }
+
+    fn placeholder_indexes(sql: &str) -> Vec<usize> {
+        let mut indexes = Vec::new();
+        let bytes = sql.as_bytes();
+        let mut offset = 0;
+        while offset < bytes.len() {
+            if bytes[offset] != b'$' {
+                offset += 1;
+                continue;
+            }
+            let mut digits = String::new();
+            let mut cursor = offset + 1;
+            while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
+                digits.push(bytes[cursor] as char);
+                cursor += 1;
+            }
+            if !digits.is_empty() {
+                indexes.push(digits.parse().expect("placeholder index"));
+            }
+            offset = cursor.max(offset + 1);
+        }
+        indexes
+    }
+
+    fn limit_offset(sql: &str) -> (usize, usize) {
+        let marker = sql
+            .rfind("LIMIT $")
+            .unwrap_or_else(|| panic!("statement has no LIMIT: {sql}"));
+        let rest = &sql[marker + "LIMIT $".len()..];
+        let (limit, tail) = rest
+            .split_once(" OFFSET $")
+            .unwrap_or_else(|| panic!("statement has no OFFSET after its LIMIT: {sql}"));
+        let limit = limit
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("LIMIT marker is not numeric: {sql}"));
+        let offset = tail
+            .chars()
+            .take_while(|character| character.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .unwrap_or_else(|_| panic!("OFFSET marker is not numeric: {sql}"));
+        (limit, offset)
+    }
+
+    #[test]
+    fn paginated_statements_use_the_last_two_placeholders_for_limit_and_offset() {
+        for (name, sql) in statements() {
+            let indexes = placeholder_indexes(sql);
+            let highest = *indexes.iter().max().expect("statement has placeholders");
+            let (limit, offset) = limit_offset(sql);
+            assert_eq!(
+                offset, highest,
+                "{name}: OFFSET must use the highest placeholder (${highest}), got ${offset}"
+            );
+            assert_eq!(
+                limit,
+                highest - 1,
+                "{name}: LIMIT must use the placeholder before OFFSET (${}), got ${limit}",
+                highest - 1
+            );
+        }
+    }
+
+    #[test]
+    fn paginated_statements_reference_every_placeholder_from_one_to_the_highest() {
+        for (name, sql) in statements() {
+            let indexes = placeholder_indexes(sql);
+            let highest = *indexes.iter().max().expect("statement has placeholders");
+            for index in 1..=highest {
+                assert!(
+                    indexes.contains(&index),
+                    "{name}: placeholder ${index} is never referenced (highest is ${highest})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_status_filter_does_not_share_the_limit_placeholder() {
+        // The exact regression: `$7` was both the status predicate and the LIMIT marker.
+        for sql in [
+            LIST_SPUS_DEFAULT_SQL,
+            LIST_SPUS_PRICE_ASC_SQL,
+            LIST_SPUS_PRICE_DESC_SQL,
+        ] {
+            let (limit, offset) = limit_offset(sql);
+            assert_eq!(limit, 8, "status filter stays on $7, LIMIT moves to $8");
+            assert_eq!(offset, 9, "OFFSET follows the bind order at $9");
+            assert!(sql.contains("commerce_product_spu.status = $7"));
+        }
     }
 }
