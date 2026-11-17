@@ -267,6 +267,7 @@ async fn backend_list_categories(
         params.locale.as_deref(),
         params.page,
         params.page_size,
+        params.root_only.unwrap_or(false),
     ) {
         Ok(query) => query,
         Err(error) => return validation_response(error.message()),

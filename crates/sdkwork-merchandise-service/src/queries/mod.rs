@@ -8,6 +8,13 @@ pub struct CategoryListQuery {
     pub status: Option<String>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
+    /// Restrict the page to root categories (`parent_id IS NULL`).
+    ///
+    /// A root filter cannot be expressed through `parent_id`: an absent
+    /// `parent_id` means "every category". Keeping it a separate flag lets a
+    /// caller lazy-load one tree level per request without fetching the whole
+    /// taxonomy.
+    pub root_only: bool,
     /// The locale the text fields are rendered in; missing translations fall back to the base row.
     pub locale: Option<String>,
 }
@@ -258,7 +265,44 @@ macro_rules! impl_query_new {
     };
 }
 
-impl_query_new!(CategoryListQuery, required: [tenant_id], optional: [organization_id, parent_id, status, locale], page: [page, page_size]);
+impl CategoryListQuery {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        tenant_id: &str,
+        organization_id: Option<&str>,
+        parent_id: Option<&str>,
+        status: Option<&str>,
+        locale: Option<&str>,
+        page: Option<i64>,
+        page_size: Option<i64>,
+        root_only: bool,
+    ) -> Result<Self, CommerceServiceError> {
+        if let Some(page) = page {
+            if page < 1 {
+                return Err(CommerceServiceError::validation(
+                    "page must be greater than or equal to 1",
+                ));
+            }
+        }
+        if let Some(page_size) = page_size {
+            if !(1..=200).contains(&page_size) {
+                return Err(CommerceServiceError::validation(
+                    "page_size must be between 1 and 200",
+                ));
+            }
+        }
+        Ok(Self {
+            tenant_id: required_text("tenant_id", tenant_id)?,
+            organization_id: optional_text(organization_id),
+            parent_id: optional_text(parent_id),
+            status: optional_text(status),
+            locale: optional_text(locale),
+            page,
+            page_size,
+            root_only,
+        })
+    }
+}
 impl_query_new!(CategoryRetrieveQuery, required: [tenant_id, category_id], optional: [locale]);
 impl_query_new!(AttributeListQuery, required: [tenant_id], optional: [organization_id, status, locale], page: [page, page_size]);
 impl_query_new!(BrandListQuery, required: [tenant_id], optional: [organization_id, status, locale], page: [page, page_size]);

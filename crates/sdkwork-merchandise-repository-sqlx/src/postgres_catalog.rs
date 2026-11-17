@@ -138,8 +138,9 @@ const LIST_CATEGORIES_SQL: &str = concat!(
        AND ($2::BIGINT IS NULL OR organization_id = $2)
        AND ($3::BIGINT IS NULL OR parent_id = $3)
        AND ($4::TEXT IS NULL OR status = $4)
+       AND (NOT $5::BOOLEAN OR parent_id IS NULL)
      ORDER BY sort_order ASC, id ASC
-     LIMIT $5 OFFSET $6"
+     LIMIT $6 OFFSET $7"
 );
 
 const COUNT_CATEGORIES_SQL: &str = "SELECT COUNT(*) FROM commerce_product_category
@@ -147,7 +148,8 @@ const COUNT_CATEGORIES_SQL: &str = "SELECT COUNT(*) FROM commerce_product_catego
        AND deleted_at IS NULL
        AND ($2::BIGINT IS NULL OR organization_id = $2)
        AND ($3::BIGINT IS NULL OR parent_id = $3)
-       AND ($4::TEXT IS NULL OR status = $4)";
+       AND ($4::TEXT IS NULL OR status = $4)
+       AND (NOT $5::BOOLEAN OR parent_id IS NULL)";
 
 const RETRIEVE_CATEGORY_SQL: &str = concat!(
     "SELECT ",
@@ -1369,6 +1371,7 @@ impl PostgresCommerceCatalogStore {
             )?)
             .bind(parse_optional_id("parent_id", query.parent_id.as_deref())?)
             .bind(query.status.as_deref())
+            .bind(query.root_only)
             .bind(limit)
             .bind(offset)
             .fetch_all(&self.pool)
@@ -1399,6 +1402,7 @@ impl PostgresCommerceCatalogStore {
             )?)
             .bind(parse_optional_id("parent_id", query.parent_id.as_deref())?)
             .bind(query.status.as_deref())
+            .bind(query.root_only)
             .fetch_one(&self.pool)
             .await
             .map_err(|error| store_error("failed to count categories", error))

@@ -131,6 +131,16 @@
             }
           },
           {
+            "name": "root_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Restrict the page to root categories (parent_id IS NULL). Used to lazy-load one taxonomy level per request."
+          },
+          {
             "name": "status",
             "in": "query",
             "required": false,

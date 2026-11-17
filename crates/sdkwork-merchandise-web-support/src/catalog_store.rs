@@ -61,6 +61,8 @@ pub struct CatalogState {
 #[derive(Debug, Deserialize)]
 pub struct CategoryQueryParams {
     pub parent_id: Option<String>,
+    /// Restricts the page to root categories; see `CategoryListQuery::root_only`.
+    pub root_only: Option<bool>,
     pub status: Option<String>,
     locale: Option<String>,
     pub page: Option<i64>,
