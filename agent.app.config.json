@@ -22,7 +22,10 @@
     "platform": "WEB",
     "tenantId": "100001",
     "organizationId": "0",
-    "appId": "sdkwork-merchandise"
+    "appId": "sdkwork-merchandise",
+    "accessTokenPermissionScope": [
+      "iam:self"
+    ]
   },
   "runtime": {
     "family": "web",
