@@ -9,6 +9,8 @@
         "common/001_currency.sql",
         "common/001_merchandise_bootstrap.sql",
         "common/002_course_products.sql",
+        "common/003_retail_catalog.sql",
+        "common/004_industry_catalog.sql",
         "001_bootstrap.sql"
       ],
       "locales": {

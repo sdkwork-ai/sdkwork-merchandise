@@ -66,16 +66,16 @@ tables:
 # because the seed scripts cite this file as the blocks' authority.
 reservedSeedIdBlocks:
   commerce_currency:                        1..99
-  commerce_product_category:                1000..1099
-  commerce_product_attribute:               1100..1199
-  commerce_product_attribute_value:         1200..1299
-  commerce_product_category_attribute:      1300..1399
-  commerce_product_spu:                     1500..1599
-  commerce_product_sku:                     1600..1699
-  commerce_product_sku_attribute:           1700..1799
-  commerce_product_spu_attribute:           1800..1899
+  commerce_product_category:                1000..109999
+  commerce_product_attribute:               1100..119999
+  commerce_product_attribute_value:         1200..139999
+  commerce_product_category_attribute:      1300..149999
+  commerce_product_spu:                     1500..159999
+  commerce_product_sku:                     1600..169999
+  commerce_product_sku_attribute:           1700..189999
+  commerce_product_spu_attribute:           1800..199999
   commerce_price_list:                      2000..2099
-  commerce_price_list_item:                 2100..2199
-  commerce_product_brand:                   2200..2299
-  commerce_product_media:                   2400..2499
+  commerce_price_list_item:                 2100..219999
+  commerce_product_brand:                   2200..229999
+  commerce_product_media:                   2400..259999
   '*_translation':                          3000..3999
