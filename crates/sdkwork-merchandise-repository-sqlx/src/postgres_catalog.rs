@@ -760,7 +760,14 @@ macro_rules! spu_list_select {
             WHERE sku.spu_id = commerce_product_spu.id \
               AND sku.tenant_id = commerce_product_spu.tenant_id \
               AND sku.deleted_at IS NULL AND sku.sales_status = 'active' \
-            ORDER BY sku.sale_price_minor ASC NULLS LAST, sku.id ASC LIMIT 1) AS min_price_scale"
+            ORDER BY sku.sale_price_minor ASC NULLS LAST, sku.id ASC LIMIT 1) AS min_price_scale, \
+         (SELECT COALESCE(m.resource_snapshot->>'url', m.resource_snapshot->>'downloadUrl', \
+                          m.resource_snapshot->>'previewUrl') \
+            FROM commerce_product_media m \
+            WHERE m.owner_type = 'spu' AND m.owner_id = commerce_product_spu.id \
+              AND m.tenant_id = commerce_product_spu.tenant_id \
+              AND m.deleted_at IS NULL AND m.status = 'active' AND m.media_role = 'main_image' \
+            ORDER BY m.sort_order ASC, m.id ASC LIMIT 1) AS primary_image_url"
     };
 }
 
@@ -5531,6 +5538,7 @@ fn map_spu_row(row: &sqlx::postgres::PgRow) -> SpuRecord {
         max_sale_price_minor: optional_bigint_cell(row, "max_sale_price_minor"),
         min_currency_code: optional_string_cell(row, "min_currency_code"),
         min_price_scale: optional_bigint_cell(row, "min_price_scale"),
+        primary_image_url: optional_string_cell(row, "primary_image_url"),
         status: string_cell(row, "status"),
         sales_status: string_cell(row, "sales_status"),
         published_at: optional_timestamp_cell(row, "published_at"),

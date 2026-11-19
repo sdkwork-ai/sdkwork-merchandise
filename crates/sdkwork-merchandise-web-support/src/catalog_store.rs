@@ -823,6 +823,8 @@ pub struct ProductResponse {
     /// Minor-unit exponent for `sale_price_minor`, published as `minorUnitExponent`.
     #[serde(rename = "minorUnitExponent", with = "sdkwork_utils_rust::serde_int64::option")]
     price_scale: Option<i64>,
+    /// Renderable URL of the product's main image.
+    image_url: Option<String>,
     status: String,
     sales_status: String,
     published_at: Option<String>,
@@ -1202,6 +1204,7 @@ pub fn map_product(value: SpuRecord) -> ProductResponse {
         sale_price_minor: value.min_sale_price_minor,
         currency_code: value.min_currency_code,
         price_scale: value.min_price_scale,
+        image_url: value.primary_image_url,
         status: value.status,
         sales_status: value.sales_status,
         published_at: value.published_at,

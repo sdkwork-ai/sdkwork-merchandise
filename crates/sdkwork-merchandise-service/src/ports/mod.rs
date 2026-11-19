@@ -273,6 +273,8 @@ pub struct SpuRecord {
     pub min_currency_code: Option<String>,
     /// Minor-unit exponent for `min_currency_code`.
     pub min_price_scale: Option<i64>,
+    /// Renderable URL of the product's main image, when a media snapshot carries one.
+    pub primary_image_url: Option<String>,
     pub status: String,
     pub sales_status: String,
     pub published_at: Option<String>,
