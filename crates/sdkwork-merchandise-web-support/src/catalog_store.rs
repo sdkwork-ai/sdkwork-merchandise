@@ -838,6 +838,8 @@ pub struct ProductResponse {
     /// optimistic concurrency, so a client that has read a resource can always name what it read.
     #[serde(with = "sdkwork_utils_rust::serde_int64")]
     version: i64,
+    /// Sellable SKUs, populated by the detail read and empty in list responses.
+    skus: Vec<SkuResponse>,
 }
 
 /// One brand, on the wire.
@@ -1220,7 +1222,18 @@ pub fn map_product(value: SpuRecord) -> ProductResponse {
                 sort_order: attribute.sort_order,
             })
             .collect(),
+        skus: Vec::new(),
     }
+}
+
+/// Maps a product detail together with its sellable SKUs.
+pub fn map_product_with_skus(
+    value: SpuRecord,
+    skus: Vec<sdkwork_merchandise_service::SkuRecord>,
+) -> ProductResponse {
+    let mut product = map_product(value);
+    product.skus = skus.into_iter().map(map_sku).collect();
+    product
 }
 
 pub fn map_sku(value: SkuRecord) -> SkuResponse {
