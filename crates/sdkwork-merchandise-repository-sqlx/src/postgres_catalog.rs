@@ -742,7 +742,25 @@ macro_rules! spu_list_select {
          commerce_product_spu.description, commerce_product_spu.product_type, \
          commerce_product_spu.status, commerce_product_spu.sales_status, \
          commerce_product_spu.published_at, commerce_product_spu.created_at, \
-         commerce_product_spu.updated_at"
+         commerce_product_spu.updated_at, \
+         (SELECT MIN(sku.sale_price_minor) FROM commerce_product_sku sku \
+            WHERE sku.spu_id = commerce_product_spu.id \
+              AND sku.tenant_id = commerce_product_spu.tenant_id \
+              AND sku.deleted_at IS NULL AND sku.sales_status = 'active') AS min_sale_price_minor, \
+         (SELECT MAX(sku.sale_price_minor) FROM commerce_product_sku sku \
+            WHERE sku.spu_id = commerce_product_spu.id \
+              AND sku.tenant_id = commerce_product_spu.tenant_id \
+              AND sku.deleted_at IS NULL AND sku.sales_status = 'active') AS max_sale_price_minor, \
+         (SELECT sku.currency_code FROM commerce_product_sku sku \
+            WHERE sku.spu_id = commerce_product_spu.id \
+              AND sku.tenant_id = commerce_product_spu.tenant_id \
+              AND sku.deleted_at IS NULL AND sku.sales_status = 'active' \
+            ORDER BY sku.sale_price_minor ASC NULLS LAST, sku.id ASC LIMIT 1) AS min_currency_code, \
+         (SELECT sku.price_scale FROM commerce_product_sku sku \
+            WHERE sku.spu_id = commerce_product_spu.id \
+              AND sku.tenant_id = commerce_product_spu.tenant_id \
+              AND sku.deleted_at IS NULL AND sku.sales_status = 'active' \
+            ORDER BY sku.sale_price_minor ASC NULLS LAST, sku.id ASC LIMIT 1) AS min_price_scale"
     };
 }
 
@@ -5509,6 +5527,10 @@ fn map_spu_row(row: &sqlx::postgres::PgRow) -> SpuRecord {
         weight_gram: optional_bigint_cell(row, "weight_gram"),
         volume_ml: optional_bigint_cell(row, "volume_ml"),
         tax_class_code: optional_string_cell(row, "tax_class_code"),
+        min_sale_price_minor: optional_bigint_cell(row, "min_sale_price_minor"),
+        max_sale_price_minor: optional_bigint_cell(row, "max_sale_price_minor"),
+        min_currency_code: optional_string_cell(row, "min_currency_code"),
+        min_price_scale: optional_bigint_cell(row, "min_price_scale"),
         status: string_cell(row, "status"),
         sales_status: string_cell(row, "sales_status"),
         published_at: optional_timestamp_cell(row, "published_at"),

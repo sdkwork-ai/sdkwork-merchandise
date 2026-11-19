@@ -815,6 +815,14 @@ pub struct ProductResponse {
     #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
     volume_ml: Option<i64>,
     tax_class_code: Option<String>,
+    /// Minimum sellable SKU price in the minor unit, projected by list reads.
+    #[serde(with = "sdkwork_utils_rust::serde_int64::option")]
+    sale_price_minor: Option<i64>,
+    /// Currency of the SKU that owns `sale_price_minor`.
+    currency_code: Option<String>,
+    /// Minor-unit exponent for `sale_price_minor`, published as `minorUnitExponent`.
+    #[serde(rename = "minorUnitExponent", with = "sdkwork_utils_rust::serde_int64::option")]
+    price_scale: Option<i64>,
     status: String,
     sales_status: String,
     published_at: Option<String>,
@@ -1189,6 +1197,9 @@ pub fn map_product(value: SpuRecord) -> ProductResponse {
         weight_gram: value.weight_gram,
         volume_ml: value.volume_ml,
         tax_class_code: value.tax_class_code,
+        sale_price_minor: value.min_sale_price_minor,
+        currency_code: value.min_currency_code,
+        price_scale: value.min_price_scale,
         status: value.status,
         sales_status: value.sales_status,
         published_at: value.published_at,

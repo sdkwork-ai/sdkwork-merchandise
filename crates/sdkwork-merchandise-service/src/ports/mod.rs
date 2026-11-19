@@ -265,6 +265,14 @@ pub struct SpuRecord {
     pub volume_ml: Option<i64>,
     /// The tenant's tax-classification key, when declared.
     pub tax_class_code: Option<String>,
+    /// Minimum sellable SKU price in minor units, projected by list reads.
+    pub min_sale_price_minor: Option<i64>,
+    /// Maximum sellable SKU price in minor units, projected by list reads.
+    pub max_sale_price_minor: Option<i64>,
+    /// Currency code of the SKU that owns `min_sale_price_minor`.
+    pub min_currency_code: Option<String>,
+    /// Minor-unit exponent for `min_currency_code`.
+    pub min_price_scale: Option<i64>,
     pub status: String,
     pub sales_status: String,
     pub published_at: Option<String>,
