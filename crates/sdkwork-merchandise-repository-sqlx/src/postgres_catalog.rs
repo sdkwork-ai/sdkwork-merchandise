@@ -767,7 +767,11 @@ macro_rules! spu_list_select {
             WHERE m.owner_type = 'spu' AND m.owner_id = commerce_product_spu.id \
               AND m.tenant_id = commerce_product_spu.tenant_id \
               AND m.deleted_at IS NULL AND m.status = 'active' AND m.media_role = 'main_image' \
-            ORDER BY m.sort_order ASC, m.id ASC LIMIT 1) AS primary_image_url"
+            ORDER BY m.sort_order ASC, m.id ASC LIMIT 1) AS primary_image_url, \
+         (SELECT b.name FROM commerce_product_brand b \
+            WHERE b.id = commerce_product_spu.brand_id \
+              AND b.tenant_id = commerce_product_spu.tenant_id \
+              AND b.deleted_at IS NULL AND b.status = 'active' LIMIT 1) AS brand_name"
     };
 }
 
@@ -5539,6 +5543,7 @@ fn map_spu_row(row: &sqlx::postgres::PgRow) -> SpuRecord {
         min_currency_code: optional_string_cell(row, "min_currency_code"),
         min_price_scale: optional_bigint_cell(row, "min_price_scale"),
         primary_image_url: optional_string_cell(row, "primary_image_url"),
+        brand_name: optional_string_cell(row, "brand_name"),
         status: string_cell(row, "status"),
         sales_status: string_cell(row, "sales_status"),
         published_at: optional_timestamp_cell(row, "published_at"),

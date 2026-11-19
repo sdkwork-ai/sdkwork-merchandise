@@ -825,6 +825,8 @@ pub struct ProductResponse {
     price_scale: Option<i64>,
     /// Renderable URL of the product's main image.
     image_url: Option<String>,
+    /// Brand display name.
+    brand_name: Option<String>,
     status: String,
     sales_status: String,
     published_at: Option<String>,
@@ -1207,6 +1209,7 @@ pub fn map_product(value: SpuRecord) -> ProductResponse {
         currency_code: value.min_currency_code,
         price_scale: value.min_price_scale,
         image_url: value.primary_image_url,
+        brand_name: value.brand_name,
         status: value.status,
         sales_status: value.sales_status,
         published_at: value.published_at,
