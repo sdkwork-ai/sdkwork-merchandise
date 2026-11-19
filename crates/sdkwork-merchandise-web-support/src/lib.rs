@@ -10,9 +10,9 @@ pub mod http_envelope;
 pub mod subject;
 
 pub use catalog_store::{
-    build_backend_catalog_router, map_attribute, map_category, map_product, map_product_with_skus,
-    map_sku, AttributeQueryParams, CatalogState, CategoryQueryParams, CreateSpuBody,
-    ProductListQueryParams, UpdateSpuBody,
+    build_backend_catalog_router, map_attribute, map_category, map_product, map_product_detail,
+    map_product_with_skus, map_sku, media_snapshot_url, AttributeQueryParams, CatalogState,
+    CategoryQueryParams, CreateSpuBody, ProductListQueryParams, UpdateSpuBody,
 };
 pub use http_envelope::{
     catalog_error_response, expected_version_from_if_match, not_found_response,

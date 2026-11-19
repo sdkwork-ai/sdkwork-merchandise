@@ -842,6 +842,8 @@ pub struct ProductResponse {
     version: i64,
     /// Sellable SKUs, populated by the detail read and empty in list responses.
     skus: Vec<SkuResponse>,
+    /// Renderable media URLs, populated by the detail read and empty in list responses.
+    images: Vec<String>,
 }
 
 /// One brand, on the wire.
@@ -1226,6 +1228,7 @@ pub fn map_product(value: SpuRecord) -> ProductResponse {
             })
             .collect(),
         skus: Vec::new(),
+        images: Vec::new(),
     }
 }
 
@@ -1237,6 +1240,34 @@ pub fn map_product_with_skus(
     let mut product = map_product(value);
     product.skus = skus.into_iter().map(map_sku).collect();
     product
+}
+
+/// Maps a product detail together with its sellable SKUs and gallery images.
+pub fn map_product_detail(
+    value: SpuRecord,
+    skus: Vec<sdkwork_merchandise_service::SkuRecord>,
+    images: Vec<String>,
+) -> ProductResponse {
+    let mut product = map_product_with_skus(value, skus);
+    product.images = images;
+    product
+}
+
+/// Reads the renderable URL out of a Drive media snapshot.
+///
+/// The snapshot is the media row's stable copy of the resource metadata; when it
+/// carries a delivery URL the product read model can expose it without a Drive
+/// round-trip. Media that only carries a Drive node id returns `None`.
+pub fn media_snapshot_url(snapshot: &serde_json::Value) -> Option<String> {
+    for key in ["url", "downloadUrl", "previewUrl"] {
+        if let Some(value) = snapshot.get(key).and_then(serde_json::Value::as_str) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_owned());
+            }
+        }
+    }
+    None
 }
 
 pub fn map_sku(value: SkuRecord) -> SkuResponse {
