@@ -74,21 +74,23 @@ also reads a `.env` in the working directory). For the `db:postgres:*` scripts,
 copy `config/host/postgres.env.example` to `config/host/postgres.env`
 (same `SDKWORK_DATABASE_*` keys; never committed).
 
+## Initialization state
+
+This module is in **initialization state** for greenfield deployments:
+
+1. **Baseline** — `database/ddl/baseline/{engine}/0001_merchandise_baseline.sql` contains the full DDL snapshot.
+2. **Migrations** — `database/migrations/{engine}/` is reserved for post-GA incremental schema changes only. It is intentionally empty at initialization.
+3. **Drift** — run `pnpm db:drift:check` before release.
+
 ## Commands
 
 ```bash
-pnpm run db:validate          # offline: framework standard (schema/registry/seed security)
+pnpm run db:validate
 pnpm run db:materialize:contract
-pnpm run db:plan              # needs Postgres
-pnpm run db:bootstrap         # needs Postgres: init + migrate + seed in one step
-pnpm run db:init / db:migrate / db:seed / db:status / db:drift:check
-pnpm run db:postgres:plan / db:postgres:init   # via config/host/postgres.env
-pnpm run db:verify:baseline   # real-Postgres integration verifier (baseline + seeds, twice)
+pnpm run db:plan
+pnpm run db:init
+pnpm run db:migrate
+pnpm run db:seed
+pnpm run db:status
+pnpm run db:drift:check
 ```
-
-## Verification
-
-`pnpm db:verify:baseline` spins up the baseline, applies every seed twice, and
-asserts table count (19), per-table row counts, seed idempotency,
-`variant_signature` recomputation, price round-trips through the currency
-registry, and zh-CN/en-US coexistence — 94 assertions, all green.
